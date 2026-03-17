@@ -25,7 +25,6 @@ export interface DatabaseModuleAsyncOptions<TDeps extends object[]> {
  */
 @Global()
 @Module({})
-// biome-ignore lint/complexity/noStaticOnlyClass: NestJS dynamic module pattern requires a class
 export class DatabaseModule {
   static forRootAsync<TDeps extends object[]>(
     options: DatabaseModuleAsyncOptions<TDeps>,

@@ -16,9 +16,8 @@ export interface DatabaseModuleOptions {
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   readonly db: Database = db;
 
-  constructor(
-    @Inject(DATABASE_OPTIONS) private readonly options: DatabaseModuleOptions,
-  ) {}
+  @Inject(DATABASE_OPTIONS)
+  private readonly options!: DatabaseModuleOptions;
 
   onModuleInit(): void {
     initialize(this.options.databaseUrl);
