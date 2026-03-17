@@ -1,26 +1,23 @@
 {
   "name": "spexs-challenge",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.11.0",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "next": "16.1.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "start": "turbo start",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "db:generate": "turbo db:generate --filter=@spexs/db",
+    "db:migrate": "turbo db:migrate --filter=@spexs/db",
+    "db:push": "turbo db:push --filter=@spexs/db",
+    "db:studio": "turbo db:studio --filter=@spexs/db",
+    "web": "pnpm --filter @spexs/web",
+    "api": "pnpm --filter @spexs/api",
+    "db": "pnpm --filter @spexs/db"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "turbo": "^2.8.17"
   }
 }
