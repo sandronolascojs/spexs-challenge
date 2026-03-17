@@ -8,3 +8,48 @@ onlyBuiltDependencies:
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
+
+catalog:
+  # TypeScript
+  typescript: ^5.7.3
+  "@types/node": ^22.10.7
+
+  # Validation
+  zod: ^4.3.6
+
+  # Serialization
+  superjson: ^2.2.6
+
+  # Auth
+  better-auth: ^1.5.5
+
+  # tRPC
+  "@trpc/server": ^11.13.4
+  "@trpc/client": ^11.13.4
+  "@trpc/tanstack-react-query": ^11.13.4
+
+  # TanStack Query
+  "@tanstack/react-query": ^5.90.21
+
+  # React
+  react: 19.2.3
+  react-dom: 19.2.3
+  "@types/react": ^19
+  "@types/react-dom": ^19
+
+  # Next.js
+  next: 16.1.7
+
+  # NestJS
+  "@nestjs/common": ^11.0.1
+  "@nestjs/config": ^4.0.3
+  "@nestjs/core": ^11.0.1
+  "@nestjs/platform-express": ^11.0.1
+  reflect-metadata: ^0.2.2
+  rxjs: ^7.8.1
+
+  # Database
+  drizzle-orm: ^0.43.1
+  drizzle-kit: ^0.31.9
+  postgres: ^3.4.7
+  dotenv: ^16.5.0

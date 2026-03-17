@@ -20,17 +20,20 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "drizzle-orm": "^0.43.1",
-    "pg": "^8.20.0"
+    "@paralleldrive/cuid2": "^3.3.0",
+    "@spexs/types": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "postgres": "catalog:"
   },
   "peerDependencies": {
-    "@nestjs/common": "^11.0.0",
-    "reflect-metadata": "^0.2.0",
-    "rxjs": "^7.0.0"
+    "@nestjs/common": "catalog:",
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:"
   },
   "devDependencies": {
-    "@types/pg": "^8.18.0",
-    "drizzle-kit": "^0.31.9",
-    "typescript": "^5"
+    "@types/node": "catalog:",
+    "dotenv": "catalog:",
+    "drizzle-kit": "catalog:",
+    "typescript": "catalog:"
   }
 }

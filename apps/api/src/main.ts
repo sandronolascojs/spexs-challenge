@@ -1,11 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { EnvService } from './config/env.service';
-import { TrpcRouter } from './trpc/trpc.router';
+import { EnvService } from './lib/env/env.service';
+import { TrpcRouter } from './modules/trpc/trpc.router';
 
 async function bootstrap() {
-  // bodyParser must be disabled so Better Auth can process raw request bodies.
-  // @thallesp/nestjs-better-auth re-adds body parsers for non-auth routes automatically.
   const app = await NestFactory.create(AppModule, { bodyParser: false });
 
   const env = app.get(EnvService);

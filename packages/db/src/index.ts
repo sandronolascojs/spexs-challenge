@@ -2,7 +2,7 @@
 export * from './schema';
 
 // Drizzle instance — for use outside NestJS (auth.ts, scripts, migrations)
-export { db, pool } from './db';
+export { db, sql } from './db';
 export type { Database } from './db';
 
 // NestJS module — import DatabaseModule in AppModule

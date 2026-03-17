@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { AppRouter } from '@api/trpc/trpc.router';
+import type { AppRouter } from '@api/trpc';
 import { env } from '@env';
 import { createTRPCClient, httpLink } from '@trpc/client';
 import { createTRPCOptionsProxy } from '@trpc/tanstack-react-query';

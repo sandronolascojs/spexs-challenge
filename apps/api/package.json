@@ -20,19 +20,19 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@nestjs/common": "^11.0.1",
-    "@nestjs/config": "^4.0.3",
-    "@nestjs/core": "^11.0.1",
-    "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/common": "catalog:",
+    "@nestjs/config": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/platform-express": "catalog:",
     "@spexs/db": "workspace:*",
     "@spexs/types": "workspace:*",
     "@thallesp/nestjs-better-auth": "^2.5.1",
-    "@trpc/server": "^11.13.4",
-    "better-auth": "^1.5.5",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
-    "superjson": "^2.2.6",
-    "zod": "^4.3.6"
+    "@trpc/server": "catalog:",
+    "better-auth": "catalog:",
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:",
+    "superjson": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
@@ -40,7 +40,7 @@
     "@nestjs/testing": "^11.0.1",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
-    "@types/node": "^22.10.7",
+    "@types/node": "catalog:",
     "@types/supertest": "^6.0.2",
     "jest": "^30.0.0",
     "source-map-support": "^0.5.21",
@@ -49,7 +49,7 @@
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.7.3"
+    "typescript": "catalog:"
   },
   "jest": {
     "moduleFileExtensions": ["js", "json", "ts"],

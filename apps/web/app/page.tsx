@@ -2,8 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
-import { HelloClient } from './_components/hello-client';
-import { getQueryClient, trpc, trpcClient } from './trpc/server';
+import { getQueryClient, trpc, trpcClient } from '../lib/trpc/server';
 
 export default async function Home() {
   const queryClient = getQueryClient();
@@ -35,9 +34,7 @@ export default async function Home() {
           <p className="text-xs font-medium uppercase tracking-widest text-zinc-400">
             Client Component
           </p>
-          <HydrationBoundary state={dehydrate(queryClient)}>
-            <HelloClient />
-          </HydrationBoundary>
+          <HydrationBoundary state={dehydrate(queryClient)}></HydrationBoundary>
         </section>
       </main>
     </div>

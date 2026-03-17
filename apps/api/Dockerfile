@@ -12,14 +12,17 @@ RUN pnpm fetch
 FROM fetch AS install
 COPY pnpm-workspace.yaml package.json ./
 COPY packages/types/package.json ./packages/types/package.json
+COPY packages/db/package.json ./packages/db/package.json
 COPY apps/api/package.json ./apps/api/package.json
 RUN pnpm install --offline --frozen-lockfile
 
 # ---- build ----
 FROM install AS builder
 COPY packages/types ./packages/types
+COPY packages/db ./packages/db
 COPY apps/api ./apps/api
 RUN pnpm --filter @spexs/types build
+RUN pnpm --filter @spexs/db build
 RUN pnpm --filter @spexs/api build
 
 # ---- runner ----
@@ -31,6 +34,7 @@ ENV NODE_ENV=production
 COPY --from=builder /app/pnpm-workspace.yaml /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/types ./packages/types
+COPY --from=builder /app/packages/db ./packages/db
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist

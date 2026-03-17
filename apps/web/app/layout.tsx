@@ -1,16 +1,17 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
-import { TRPCReactProvider } from './trpc/client';
+import { Inter, JetBrains_Mono } from 'next/font/google';
+import { TRPCReactProvider } from '../lib/trpc/client';
 import './globals.css';
+import { ThemeProvider } from '@/components/theme-provider';
+import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
+import { THEME_STORAGE_KEY } from '@spexs/types';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+const jetBrainsMono = JetBrains_Mono({
   subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
+  variable: '--font-mono',
 });
 
 export const metadata: Metadata = {
@@ -24,11 +25,31 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <TRPCReactProvider>{children}</TRPCReactProvider>
+    <html
+      lang="en"
+      className={cn(
+        'font-sans',
+        inter.variable,
+        jetBrainsMono.variable,
+        'antialiased',
+      )}
+      suppressHydrationWarning
+    >
+      <body suppressHydrationWarning>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          storageKey={THEME_STORAGE_KEY}
+          enableSystem
+          disableTransitionOnChange
+        >
+          <TooltipProvider>
+            <TRPCReactProvider>
+              <main className="min-h-screen bg-background">{children}</main>
+            </TRPCReactProvider>
+          </TooltipProvider>
+        </ThemeProvider>
+        <Toaster />
       </body>
     </html>
   );

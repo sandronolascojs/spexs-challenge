@@ -1,22 +1,23 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 import * as schema from './schema';
 
-export type Database = NodePgDatabase<typeof schema>;
+export type Database = PostgresJsDatabase<typeof schema>;
 
 /**
- * Shared connection pool.
- * The pool is lazy — it establishes connections only when the first query runs.
- * Closed via DatabaseService.onModuleDestroy in the NestJS lifecycle.
+ * postgres.js client — lazy connection, established on first query.
+ * Ended via DatabaseService.onModuleDestroy in the NestJS lifecycle.
  */
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL environment variable is not set');
+}
+
+export const sql = postgres(process.env.DATABASE_URL);
 
 /**
  * Drizzle database instance with the full schema.
  * Import this directly in non-NestJS contexts (e.g. auth.ts, scripts, migrations).
  * In NestJS, inject DatabaseService and access db via service.db.
  */
-export const db: Database = drizzle(pool, { schema });
+export const db: Database = drizzle(sql, { schema });

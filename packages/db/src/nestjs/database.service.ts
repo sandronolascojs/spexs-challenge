@@ -1,5 +1,5 @@
 import { Injectable, type OnModuleDestroy } from '@nestjs/common';
-import { db, pool } from '../db';
+import { db, sql } from '../db';
 import type { Database } from '../db';
 
 @Injectable()
@@ -11,6 +11,6 @@ export class DatabaseService implements OnModuleDestroy {
   readonly db: Database = db;
 
   async onModuleDestroy(): Promise<void> {
-    await pool.end();
+    await sql.end();
   }
 }

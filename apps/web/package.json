@@ -9,26 +9,39 @@
     "lint": "biome check ."
   },
   "dependencies": {
+    "@base-ui/react": "^1.3.0",
     "@spexs/types": "workspace:*",
     "@t3-oss/env-nextjs": "^0.13.10",
-    "@tanstack/react-query": "^5.90.21",
-    "@trpc/client": "^11.13.4",
-    "@trpc/server": "^11.13.4",
-    "@trpc/tanstack-react-query": "^11.13.4",
-    "better-auth": "^1.5.5",
+    "@tanstack/react-query": "catalog:",
+    "@trpc/client": "catalog:",
+    "@trpc/server": "catalog:",
+    "@trpc/tanstack-react-query": "catalog:",
+    "better-auth": "catalog:",
+    "class-variance-authority": "^0.7.1",
     "client-only": "^0.0.1",
-    "next": "16.1.7",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.577.0",
+    "next": "catalog:",
+    "next-themes": "^0.4.6",
+    "react": "catalog:",
+    "react-day-picker": "^9.14.0",
+    "react-dom": "catalog:",
     "server-only": "^0.0.1",
-    "superjson": "^2.2.6"
+    "shadcn": "^4.0.8",
+    "sonner": "^2.0.7",
+    "superjson": "catalog:",
+    "tailwind-merge": "^3.5.0",
+    "tw-animate-css": "^1.4.0",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "catalog:"
   }
 }
