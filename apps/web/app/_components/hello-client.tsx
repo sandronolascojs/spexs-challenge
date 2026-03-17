@@ -1,8 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useTRPC } from '../trpc/client';
 import { useState } from 'react';
+import { useTRPC } from '../trpc/client';
 
 export function HelloClient() {
   const trpc = useTRPC();
@@ -36,9 +36,7 @@ export function HelloClient() {
           {isFetching ? '...' : 'Send'}
         </button>
       </form>
-      {data && (
-        <p className="text-lg font-medium">{data.message}</p>
-      )}
+      {data && <p className="text-lg font-medium">{data.message}</p>}
     </div>
   );
 }

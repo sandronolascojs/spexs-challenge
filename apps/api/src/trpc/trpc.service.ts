@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { initTRPC, TRPCError } from '@trpc/server';
+import { TRPCError, initTRPC } from '@trpc/server';
 import SuperJSON from 'superjson';
 import type { TrpcContext } from './trpc.context';
 

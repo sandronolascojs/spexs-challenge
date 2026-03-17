@@ -1,8 +1,10 @@
-import { createEnv } from "@t3-oss/env-nextjs";
+import { createEnv } from '@t3-oss/env-nextjs';
 
 export const env = createEnv({
   shared: {
-    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+    NODE_ENV: z
+      .enum(['development', 'production', 'test'])
+      .default('development'),
     NEXT_PUBLIC_API_URL: z.string().url(),
   },
   runtimeEnv: {

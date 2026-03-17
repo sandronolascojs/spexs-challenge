@@ -1,5 +1,5 @@
-import { createAuthClient } from 'better-auth/react';
 import { env } from '@env';
+import { createAuthClient } from 'better-auth/react';
 
 /**
  * Better Auth client — single instance for the entire frontend.

@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from '@thallesp/nestjs-better-auth';
 import { DatabaseModule } from '@spexs/db';
+import { AuthModule } from '@thallesp/nestjs-better-auth';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { EnvModule } from './config/env.module';
-import { TrpcModule } from './trpc/trpc.module';
 import { auth } from './lib/auth';
+import { TrpcModule } from './trpc/trpc.module';
 
 @Module({
   imports: [

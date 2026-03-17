@@ -1,15 +1,15 @@
+import { db } from '@spexs/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { haveIBeenPwned } from 'better-auth/plugins'
-import { db } from '@spexs/db';
+import { haveIBeenPwned } from 'better-auth/plugins';
 
 // ---------------------------------------------------------------------------
 // Session constants
 // ---------------------------------------------------------------------------
 
 const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 7; // 7 days
-const SESSION_UPDATE_AGE_SECONDS = 60 * 60 * 24;      // refresh every 24 h
-const SESSION_COOKIE_CACHE_MAX_AGE_SECONDS = 60 * 5;  // 5 min cookie cache
+const SESSION_UPDATE_AGE_SECONDS = 60 * 60 * 24; // refresh every 24 h
+const SESSION_COOKIE_CACHE_MAX_AGE_SECONDS = 60 * 5; // 5 min cookie cache
 
 // ---------------------------------------------------------------------------
 // Rate limit constants
@@ -95,7 +95,9 @@ export const auth = betterAuth({
     },
   },
   plugins: [
-    haveIBeenPwned({ customPasswordCompromisedMessage: PWNED_PASSWORD_MESSAGE }),
+    haveIBeenPwned({
+      customPasswordCompromisedMessage: PWNED_PASSWORD_MESSAGE,
+    }),
   ],
 });
 
