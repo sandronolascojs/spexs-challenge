@@ -29,6 +29,9 @@
     "rules": { "recommended": true, "suspicious": { "noExplicitAny": "off" } }
   },
   "javascript": {
+    "parser": {
+      "unsafeParameterDecoratorsEnabled": true
+    },
     "formatter": {
       "jsxQuoteStyle": "double",
       "quoteProperties": "asNeeded",

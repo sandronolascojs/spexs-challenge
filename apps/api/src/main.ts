@@ -6,6 +6,10 @@ import { TrpcRouter } from './modules/trpc/trpc.router';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
 
+  // Trust one layer of reverse-proxy headers so Better Auth rate limiting
+  // can resolve the real client IP from X-Forwarded-For / X-Real-IP.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   const env = app.get(EnvService);
 
   app.enableCors({

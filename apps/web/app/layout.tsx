@@ -44,9 +44,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <TooltipProvider>
-            <TRPCReactProvider>
-              <main className="min-h-screen bg-background">{children}</main>
-            </TRPCReactProvider>
+            <TRPCReactProvider>{children}</TRPCReactProvider>
           </TooltipProvider>
         </ThemeProvider>
         <Toaster />

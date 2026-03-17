@@ -5,19 +5,57 @@ import * as schema from './schema';
 
 export type Database = PostgresJsDatabase<typeof schema>;
 
+let _sql: ReturnType<typeof postgres> | undefined;
+let _db: Database | undefined;
+
 /**
- * postgres.js client — lazy connection, established on first query.
- * Ended via DatabaseService.onModuleDestroy in the NestJS lifecycle.
+ * Initialize the database connection. Called by DatabaseService.onModuleInit
+ * after NestJS has loaded env vars via ConfigModule. Safe to call multiple
+ * times — subsequent calls are no-ops.
  */
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is not set');
+export function initialize(databaseUrl: string): void {
+  if (_sql) return;
+  _sql = postgres(databaseUrl);
+  _db = drizzle(_sql, { schema });
 }
 
-export const sql = postgres(process.env.DATABASE_URL);
+/** Close the connection pool. Called by DatabaseService.onModuleDestroy. */
+export async function close(): Promise<void> {
+  await _sql?.end();
+}
+
+function resolveSql(): ReturnType<typeof postgres> {
+  if (!_sql)
+    throw new Error(
+      'Database not initialized — DatabaseModule.forRootAsync() must be configured in AppModule',
+    );
+  return _sql;
+}
+
+function resolveDb(): Database {
+  if (!_db)
+    throw new Error(
+      'Database not initialized — DatabaseModule.forRootAsync() must be configured in AppModule',
+    );
+  return _db;
+}
 
 /**
- * Drizzle database instance with the full schema.
- * Import this directly in non-NestJS contexts (e.g. auth.ts, scripts, migrations).
- * In NestJS, inject DatabaseService and access db via service.db.
+ * Drizzle database instance — lazy proxy, real connection established on
+ * first access after initialize() is called by DatabaseService.onModuleInit.
+ *
+ * Import this directly in non-NestJS contexts (auth.ts, scripts, migrations).
+ * In NestJS, inject DatabaseService and access via service.db.
  */
-export const db: Database = drizzle(sql, { schema });
+export const db: Database = new Proxy({} as Database, {
+  get: (_, prop) => Reflect.get(resolveDb(), prop),
+});
+
+/**
+ * postgres.js client — lazy proxy, same lifecycle as db above.
+ * Ended via DatabaseService.onModuleDestroy.
+ */
+export const sql: ReturnType<typeof postgres> = new Proxy(
+  {} as ReturnType<typeof postgres>,
+  { get: (_, prop) => Reflect.get(resolveSql(), prop) },
+);
