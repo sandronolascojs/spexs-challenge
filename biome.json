@@ -32,6 +32,16 @@
       "complexity": { "noStaticOnlyClass": "off" }
     }
   },
+  "overrides": [
+    {
+      "include": ["apps/api/**", "packages/db/**"],
+      "linter": {
+        "rules": {
+          "style": { "useImportType": "off" }
+        }
+      }
+    }
+  ],
   "javascript": {
     "parser": {
       "unsafeParameterDecoratorsEnabled": true
