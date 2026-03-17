@@ -20,7 +20,7 @@
     ],
     "paths": {
       "@/*": ["./*"],
-      "@api/*": ["../api/src/*"],
+      "@api/trpc": ["../api/src/modules/trpc/trpc.router.ts"],
       "@env": ["./env.mjs"]
     }
   },

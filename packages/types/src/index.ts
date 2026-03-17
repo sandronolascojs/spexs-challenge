@@ -1,6 +1,3 @@
-// Shared types between frontend and backend
-
-export interface HealthResponse {
-  status: 'ok';
-  timestamp: string;
-}
+export * from './constants';
+export * from './enums';
+export * from './types';

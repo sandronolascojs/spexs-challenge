@@ -1,16 +1,29 @@
-import { Injectable, type OnModuleDestroy } from '@nestjs/common';
-import { db, pool } from '../db';
-import type { Database } from '../db';
+import {
+  Inject,
+  Injectable,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
+import { type Database, close, db, initialize } from '../db';
+
+export const DATABASE_OPTIONS = Symbol('DATABASE_OPTIONS');
+
+export interface DatabaseModuleOptions {
+  databaseUrl: string;
+}
 
 @Injectable()
-export class DatabaseService implements OnModuleDestroy {
-  /**
-   * Drizzle database instance — fully typed with the project schema.
-   * Use this in repositories: this.database.db.query.users.findFirst(...)
-   */
+export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   readonly db: Database = db;
 
+  @Inject(DATABASE_OPTIONS)
+  private readonly options!: DatabaseModuleOptions;
+
+  onModuleInit(): void {
+    initialize(this.options.databaseUrl);
+  }
+
   async onModuleDestroy(): Promise<void> {
-    await pool.end();
+    await close();
   }
 }

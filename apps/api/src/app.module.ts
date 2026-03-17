@@ -1,20 +1,24 @@
 import { Module } from '@nestjs/common';
-import { DatabaseModule } from '@spexs/db';
+import { DatabaseModule, type DatabaseModuleOptions } from '@spexs/db';
 import { AuthModule } from '@thallesp/nestjs-better-auth';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { EnvModule } from './config/env.module';
 import { auth } from './lib/auth';
-import { TrpcModule } from './trpc/trpc.module';
+import { EnvModule } from './lib/env/env.module';
+import { EnvService } from './lib/env/env.service';
+import { HealthModule } from './modules/health/health.module';
+import { TrpcModule } from './modules/trpc/trpc.module';
 
 @Module({
   imports: [
     EnvModule,
-    DatabaseModule,
+    DatabaseModule.forRootAsync({
+      inject: [EnvService],
+      useFactory: (env: EnvService): DatabaseModuleOptions => ({
+        databaseUrl: env.get('DATABASE_URL'),
+      }),
+    }),
     AuthModule.forRoot({ auth }),
+    HealthModule,
     TrpcModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}

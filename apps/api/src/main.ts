@@ -1,12 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { EnvService } from './config/env.service';
-import { TrpcRouter } from './trpc/trpc.router';
+import { EnvService } from './lib/env/env.service';
+import { TrpcRouter } from './modules/trpc/trpc.router';
 
 async function bootstrap() {
-  // bodyParser must be disabled so Better Auth can process raw request bodies.
-  // @thallesp/nestjs-better-auth re-adds body parsers for non-auth routes automatically.
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  // Trust one layer of reverse-proxy headers so Better Auth rate limiting
+  // can resolve the real client IP from X-Forwarded-For / X-Real-IP.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
   const env = app.get(EnvService);
 
