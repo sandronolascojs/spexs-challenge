@@ -211,6 +211,29 @@ export class WorkflowsService {
     await this.repository.deleteById(id);
   }
 
+  async deleteRecipient(
+    workflowId: string,
+    recipientId: string,
+    userId: string,
+  ) {
+    await this.assertOwnership(workflowId, userId);
+
+    const workflow = await this.repository.findById(workflowId);
+    if (!workflow) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' });
+    }
+
+    if (workflow.recipients.length <= 1) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message:
+          'Cannot delete the last recipient. A workflow must have at least one recipient.',
+      });
+    }
+
+    await this.repository.deleteRecipient(recipientId);
+  }
+
   private async assertOwnership(workflowId: string, userId: string) {
     const workflow = await this.repository.findById(workflowId);
 

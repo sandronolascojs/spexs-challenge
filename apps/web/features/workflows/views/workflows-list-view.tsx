@@ -44,21 +44,17 @@ function EmptyState() {
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <Button
-          nativeButton={false}
-          render={<Link href="/workflows/new" />}
-          size="sm"
-        >
-          <Plus className="mr-2 size-4" />
-          Use Template
+        <Button asChild size="sm">
+          <Link href="/workflows/new">
+            <Plus className="mr-2 size-4" />
+            Use Template
+          </Link>
         </Button>
-        <Button
-          nativeButton={false}
-          render={<Link href="/workflows/new?mode=scratch" />}
-          size="sm"
-          variant="outline"
-        >
-          Create Empty
+        <Button asChild size="sm">
+          <Link href="/workflows/new?mode=scratch">
+            <Plus className="mr-2 size-4" />
+            Create Empty
+          </Link>
         </Button>
       </div>
     </div>
@@ -124,24 +120,12 @@ export function WorkflowsListView() {
         isLoading={isLoading}
         error={layoutError}
         headerActions={
-          <>
-            <Button
-              nativeButton={false}
-              render={<Link href="/workflows/new?mode=scratch" />}
-              size="sm"
-              variant="outline"
-            >
-              Create Empty
-            </Button>
-            <Button
-              nativeButton={false}
-              render={<Link href="/workflows/new" />}
-              size="sm"
-            >
+          <Button asChild size="sm">
+            <Link href="/workflows/new?mode=scratch">
               <Plus className="mr-2 size-4" />
-              Use Template
-            </Button>
-          </>
+              Create Empty
+            </Link>
+          </Button>
         }
         filters={
           <ResourceFilters

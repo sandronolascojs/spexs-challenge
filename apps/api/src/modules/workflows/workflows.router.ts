@@ -1,5 +1,6 @@
 import {
   createWorkflowSchema,
+  deleteRecipientSchema,
   deleteWorkflowSchema,
   toggleActiveSchema,
   updateWorkflowCanvasSchema,
@@ -56,6 +57,16 @@ export function buildWorkflowsRouter(
       .input(deleteWorkflowSchema)
       .mutation(({ input, ctx }) =>
         service.delete(input.id, ctx.session.user.id),
+      ),
+
+    deleteRecipient: trpc.protectedProcedure
+      .input(deleteRecipientSchema)
+      .mutation(({ input, ctx }) =>
+        service.deleteRecipient(
+          input.workflowId,
+          input.recipientId,
+          ctx.session.user.id,
+        ),
       ),
   });
 }

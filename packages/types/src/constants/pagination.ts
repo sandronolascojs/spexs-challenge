@@ -78,6 +78,18 @@ export type WorkflowSortField =
   (typeof WORKFLOW_SORT_FIELDS)[keyof typeof WORKFLOW_SORT_FIELDS];
 
 /**
+ * Sortable fields for events.
+ */
+export const EVENT_SORT_FIELDS = {
+  OPENED_AT: 'openedAt',
+  RESOLVED_AT: 'resolvedAt',
+  STATUS: 'status',
+} as const;
+
+export type EventSortField =
+  (typeof EVENT_SORT_FIELDS)[keyof typeof EVENT_SORT_FIELDS];
+
+/**
  * Pagination configuration presets.
  */
 export const PAGINATION_PRESETS = {

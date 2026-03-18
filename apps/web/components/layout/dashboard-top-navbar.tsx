@@ -25,6 +25,7 @@ interface DashboardTopNavbarProps {
   className?: string;
   contentClassName?: string;
   withBorder?: boolean;
+  children?: ReactNode;
 }
 
 function renderBreadcrumbItem(
@@ -43,6 +44,7 @@ export function DashboardTopNavbar({
   className,
   contentClassName,
   withBorder = false,
+  children,
 }: DashboardTopNavbarProps) {
   return (
     <header
@@ -77,6 +79,9 @@ export function DashboardTopNavbar({
           </BreadcrumbList>
         </Breadcrumb>
       </div>
+      {children && (
+        <div className="flex shrink-0 items-center pr-4">{children}</div>
+      )}
     </header>
   );
 }

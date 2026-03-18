@@ -204,4 +204,10 @@ export class WorkflowsRepository {
   async deleteById(id: string) {
     await this.database.db.delete(workflows).where(eq(workflows.id, id));
   }
+
+  async deleteRecipient(recipientId: string) {
+    await this.database.db
+      .delete(workflowRecipients)
+      .where(eq(workflowRecipients.id, recipientId));
+  }
 }

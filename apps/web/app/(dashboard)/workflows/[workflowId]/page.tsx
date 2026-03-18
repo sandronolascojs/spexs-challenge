@@ -1,40 +1,50 @@
-import { DashboardTopNavbar } from '@/components/layout/dashboard-top-navbar';
-import { WorkflowCanvas } from '@/features/workflows/components/workflow-canvas';
+import { WorkflowPageShell } from '@/features/workflows/components/workflow-page-shell';
+import { workflowDetailSearchParamsCache } from '@/features/workflows/lib/search-params';
 import { isAuthenticated } from '@/lib/auth/guards';
 import { getQueryClient, trpc } from '@/lib/trpc/server';
 import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
 import { redirect } from 'next/navigation';
+import type { SearchParams } from 'nuqs/server';
 
 interface PageProps {
   params: Promise<{ workflowId: string }>;
+  searchParams: Promise<SearchParams>;
 }
 
-export default async function WorkflowPage({ params }: PageProps) {
+export default async function WorkflowPage({
+  params,
+  searchParams,
+}: PageProps) {
   const { workflowId } = await params;
 
   const authenticated = await isAuthenticated();
   if (!authenticated) redirect('/login');
 
+  const { page, pageSize, sortBy, sortDirection, status } =
+    await workflowDetailSearchParamsCache.parse(searchParams);
+
   const queryClient = getQueryClient();
-  await queryClient.prefetchQuery(
+
+  void queryClient.prefetchQuery(
     trpc.workflows.getById.queryOptions({ id: workflowId }),
+  );
+
+  void queryClient.prefetchQuery(
+    trpc.events.listByWorkflow.queryOptions({
+      workflowId,
+      query: {
+        page,
+        pageSize,
+        sortBy,
+        sortDirection,
+        status: status ?? undefined,
+      },
+    }),
   );
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <div className="flex h-dvh flex-col overflow-hidden">
-        <DashboardTopNavbar
-          withBorder
-          items={[
-            { id: 'workflows', label: 'Workflows', href: '/workflows' },
-            { id: 'workflow-canvas', label: 'Canvas' },
-          ]}
-        />
-
-        <div className="flex-1 overflow-hidden">
-          <WorkflowCanvas workflowId={workflowId} />
-        </div>
-      </div>
+      <WorkflowPageShell workflowId={workflowId} />
     </HydrationBoundary>
   );
 }

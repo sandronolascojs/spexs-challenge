@@ -19,12 +19,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useTRPC } from '@/lib/trpc/client';
 import {
   ComparisonOperator,
   type CreateWorkflowInput,
   NotificationChannel,
   TriggerType,
 } from '@spexs/types';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useWorkflowDialogStore } from '../stores/dialog-store';
 import type { WorkflowWithRecipients } from '../types/canvas';
@@ -267,7 +270,7 @@ export function WorkflowNodeDialog({
   }
 
   function saveRecipient() {
-    if (dialog.type !== 'edit-recipient') {
+    if (!dialog || dialog.type !== 'edit-recipient') {
       return;
     }
 
@@ -533,5 +536,92 @@ export function WorkflowNodeDialog({
     );
   }
 
+  if (dialog.type === 'delete-recipient') {
+    return (
+      <DeleteRecipientDialog
+        workflowId={dialog.data.workflowId}
+        recipientId={dialog.data.recipientId}
+        onClose={close}
+      />
+    );
+  }
+
   return null;
+}
+
+// ── Delete-recipient confirmation ─────────────────────────────────────────────
+
+function DeleteRecipientDialog({
+  workflowId,
+  recipientId,
+  onClose,
+}: {
+  workflowId: string;
+  recipientId: string;
+  onClose: () => void;
+}) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation(
+    trpc.workflows.deleteRecipient.mutationOptions({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries(
+          trpc.workflows.getById.queryFilter({ id: workflowId }),
+        );
+        await queryClient.invalidateQueries(trpc.workflows.list.queryFilter());
+        onClose();
+      },
+    }),
+  );
+
+  function handleDelete() {
+    deleteMutation.mutate({ workflowId, recipientId });
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete Recipient</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to remove this recipient? This action cannot
+            be undone.
+          </DialogDescription>
+        </DialogHeader>
+
+        {deleteMutation.error && (
+          <p className="text-sm text-destructive">
+            {deleteMutation.error.message}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={deleteMutation.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={deleteMutation.isPending}
+          >
+            {deleteMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Deleting…
+              </>
+            ) : (
+              'Delete'
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }

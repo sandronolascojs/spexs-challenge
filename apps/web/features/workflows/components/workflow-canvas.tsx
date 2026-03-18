@@ -1,5 +1,6 @@
 'use client';
 
+import { ZoomSelect } from '@/components/ui/react-flow/zoom-select';
 import {
   Background,
   BackgroundVariant,
@@ -28,6 +29,7 @@ import type { WorkflowWithRecipients } from '../types/canvas';
 import { MessageNode } from './nodes/message-node';
 import { RecipientNode } from './nodes/recipient-node';
 import { TriggerNode } from './nodes/trigger-node';
+import { TriggerWorkflowButton } from './trigger-workflow-button';
 import { WorkflowNodeDialog } from './workflow-node-dialog';
 
 // ── Node type registry ────────────────────────────────────────────────────────
@@ -199,8 +201,10 @@ function WorkflowCanvasInner({
         />
         <Controls
           showInteractive={false}
-          className="rounded-md border border-border bg-card/95 text-foreground shadow-sm [&>button]:border-border [&>button]:bg-card [&>button]:text-foreground [&>button:hover]:bg-accent"
+          className="!border !border-border !bg-card !text-foreground shadow-sm [&_button]:!border-border [&_button]:!bg-card [&_button]:!text-foreground [&_button:hover]:!bg-accent [&_button:hover]:!text-accent-foreground [&_svg]:!text-foreground"
         />
+        <ZoomSelect position="top-right" />
+        <TriggerWorkflowButton workflow={workflow} />
       </ReactFlow>
 
       <WorkflowNodeDialog

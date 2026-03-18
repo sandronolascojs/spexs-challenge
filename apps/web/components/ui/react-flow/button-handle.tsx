@@ -1,4 +1,4 @@
-import { BaseHandle } from '@/components/base-handle';
+import { BaseHandle } from '@/components/ui/react-flow/base-handle';
 import { type HandleProps, Position } from '@xyflow/react';
 
 const wrapperClassNames: Record<Position, string> = {

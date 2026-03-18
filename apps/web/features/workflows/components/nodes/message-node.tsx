@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import { BaseHandle } from '@/components/ui/react-flow/base-handle';
 import {
   BaseNode,
@@ -9,7 +10,7 @@ import {
 } from '@/components/ui/react-flow/base-node';
 import { cn } from '@/lib/utils';
 import { Position } from '@xyflow/react';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, Pencil } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useWorkflowDialogStore } from '../../stores/dialog-store';
 import type { MessageNode as MessageNodeType } from '../../types/canvas';
@@ -49,21 +50,23 @@ function renderTemplate(template: string): ReactNode[] {
 export function MessageNode({ data }: Props) {
   const openDialog = useWorkflowDialogStore((state) => state.openDialog);
 
+  function handleEditClick(event: React.MouseEvent) {
+    event.stopPropagation();
+    openDialog({
+      type: 'edit-message',
+      data: { workflowId: data.workflowId },
+    });
+  }
+
   return (
     <BaseNode
       data-tour="workflow-message-node"
       className={cn(
-        'w-80 cursor-pointer bg-card',
+        'w-80 bg-card',
         'border border-border/50',
         '[box-shadow:0_0_0_1px_rgba(0,0,0,.02),0_1px_2px_rgba(0,0,0,.03)]',
         'dark:[box-shadow:0_-10px_40px_-10px_#ffffff08_inset] dark:[border:1px_solid_rgba(255,255,255,.08)]',
       )}
-      onClick={() =>
-        openDialog({
-          type: 'edit-message',
-          data: { workflowId: data.workflowId },
-        })
-      }
     >
       <BaseHandle type="target" position={Position.Top} />
 
@@ -74,6 +77,14 @@ export function MessageNode({ data }: Props) {
         <BaseNodeHeaderTitle className="text-xs uppercase tracking-wider">
           Output Message
         </BaseNodeHeaderTitle>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 rounded-md hover:bg-accent"
+          onClick={handleEditClick}
+        >
+          <Pencil className="size-3" />
+        </Button>
       </BaseNodeHeader>
 
       <BaseNodeContent>

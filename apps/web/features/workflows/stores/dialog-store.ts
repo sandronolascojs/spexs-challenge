@@ -3,7 +3,8 @@ import { useSyncExternalStore } from 'react';
 export type WorkflowDialogType =
   | 'edit-trigger'
   | 'edit-message'
-  | 'edit-recipient';
+  | 'edit-recipient'
+  | 'delete-recipient';
 
 export interface WorkflowDialogData {
   'edit-trigger': {
@@ -16,12 +17,17 @@ export interface WorkflowDialogData {
     workflowId: string;
     recipientId: string;
   };
+  'delete-recipient': {
+    workflowId: string;
+    recipientId: string;
+  };
 }
 
 type WorkflowDialogPayload =
   | { type: 'edit-trigger'; data: WorkflowDialogData['edit-trigger'] }
   | { type: 'edit-message'; data: WorkflowDialogData['edit-message'] }
-  | { type: 'edit-recipient'; data: WorkflowDialogData['edit-recipient'] };
+  | { type: 'edit-recipient'; data: WorkflowDialogData['edit-recipient'] }
+  | { type: 'delete-recipient'; data: WorkflowDialogData['delete-recipient'] };
 
 interface WorkflowDialogState {
   dialog: WorkflowDialogPayload | null;

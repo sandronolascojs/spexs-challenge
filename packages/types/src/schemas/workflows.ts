@@ -20,7 +20,7 @@ export const workflowRecipientSchema = z.object({
 
 export const workflowCanvasNodePositionSchema = z.object({
   nodeId: z.string().min(1),
-  kind: z.nativeEnum(WorkflowCanvasNodeKind),
+  kind: z.enum(WorkflowCanvasNodeKind),
   x: z.number(),
   y: z.number(),
 });
@@ -51,7 +51,7 @@ export const createWorkflowSchema = z.discriminatedUnion('triggerType', [
   workflowBaseSchema.extend({
     triggerType: z.literal(TriggerType.THRESHOLD),
     metricName: z.string().min(1),
-    operator: z.nativeEnum(ComparisonOperator),
+    operator: z.enum(ComparisonOperator),
     thresholdValue: z.number(),
   }),
   workflowBaseSchema.extend({
@@ -102,6 +102,11 @@ export const deleteWorkflowSchema = z.object({
   id: z.string().min(1),
 });
 
+export const deleteRecipientSchema = z.object({
+  workflowId: z.string().min(1),
+  recipientId: z.string().min(1),
+});
+
 export const updateWorkflowCanvasSchema = z.object({
   id: z.string().min(1),
   canvasState: workflowCanvasStateSchema,
@@ -110,9 +115,9 @@ export const updateWorkflowCanvasSchema = z.object({
 const workflowListItemSchema = z.object({
   id: z.string(),
   name: z.string(),
-  triggerType: z.nativeEnum(TriggerType),
+  triggerType: z.enum(TriggerType),
   metricName: z.string().nullable(),
-  operator: z.nativeEnum(ComparisonOperator).nullable(),
+  operator: z.enum(ComparisonOperator).nullable(),
   thresholdValue: z.number().nullable(),
   baseValue: z.number().nullable(),
   deviationPercentage: z.number().nullable(),
@@ -125,7 +130,7 @@ const workflowListItemSchema = z.object({
     z.object({
       id: z.string(),
       workflowId: z.string(),
-      channel: z.nativeEnum(NotificationChannel),
+      channel: z.enum(NotificationChannel),
       recipient: z.string(),
       createdAt: z.date(),
     }),
@@ -153,3 +158,4 @@ export type UpdateWorkflowCanvasInput = z.infer<
 >;
 export type ToggleActiveInput = z.infer<typeof toggleActiveSchema>;
 export type DeleteWorkflowInput = z.infer<typeof deleteWorkflowSchema>;
+export type DeleteRecipientInput = z.infer<typeof deleteRecipientSchema>;

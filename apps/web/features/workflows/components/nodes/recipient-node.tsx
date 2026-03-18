@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import { BaseHandle } from '@/components/ui/react-flow/base-handle';
 import {
   BaseNode,
@@ -10,7 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 import { NotificationChannel } from '@spexs/types';
 import { Position } from '@xyflow/react';
-import { Bell, Mail } from 'lucide-react';
+import { Bell, Mail, Pencil, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useWorkflowDialogStore } from '../../stores/dialog-store';
 import type { RecipientNode as RecipientNodeType } from '../../types/canvas';
@@ -50,24 +51,37 @@ export function RecipientNode({ data }: Props) {
   const config = CHANNEL_CONFIG[data.channel] ?? FALLBACK_CONFIG;
   const openDialog = useWorkflowDialogStore((state) => state.openDialog);
 
+  function handleEditClick(event: React.MouseEvent) {
+    event.stopPropagation();
+    openDialog({
+      type: 'edit-recipient',
+      data: {
+        workflowId: data.workflowId,
+        recipientId: data.recipientId,
+      },
+    });
+  }
+
+  function handleDeleteClick(event: React.MouseEvent) {
+    event.stopPropagation();
+    openDialog({
+      type: 'delete-recipient',
+      data: {
+        workflowId: data.workflowId,
+        recipientId: data.recipientId,
+      },
+    });
+  }
+
   return (
     <BaseNode
       data-tour="workflow-recipient-node"
       className={cn(
-        'w-80 cursor-pointer bg-card',
+        'w-80 bg-card',
         'border border-border/50',
         '[box-shadow:0_0_0_1px_rgba(0,0,0,.02),0_1px_2px_rgba(0,0,0,.03)]',
         'dark:[box-shadow:0_-10px_40px_-10px_#ffffff08_inset] dark:[border:1px_solid_rgba(255,255,255,.08)]',
       )}
-      onClick={() =>
-        openDialog({
-          type: 'edit-recipient',
-          data: {
-            workflowId: data.workflowId,
-            recipientId: data.recipientId,
-          },
-        })
-      }
     >
       <BaseHandle type="target" position={Position.Top} />
 
@@ -82,6 +96,24 @@ export function RecipientNode({ data }: Props) {
         >
           {config.label}
         </BaseNodeHeaderTitle>
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6 rounded-md hover:bg-accent"
+            onClick={handleEditClick}
+          >
+            <Pencil className="size-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6 rounded-md text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={handleDeleteClick}
+          >
+            <Trash2 className="size-3" />
+          </Button>
+        </div>
       </BaseNodeHeader>
 
       <BaseNodeContent>
