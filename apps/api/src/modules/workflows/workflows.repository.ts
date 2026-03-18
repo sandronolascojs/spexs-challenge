@@ -2,14 +2,13 @@ import { Injectable } from '@nestjs/common';
 import {
   DatabaseService,
   type NewWorkflow,
-  type NewWorkflowRecipient,
-  type Workflow,
-  workflowRecipients,
+  type NewWorkflowNode,
+  workflowConnections,
+  workflowNodes,
   workflows,
 } from '@spexs/db';
 import {
   WORKFLOW_SORT_FIELDS,
-  type WorkflowCanvasState,
   type WorkflowListQueryInput,
   buildOrderBy,
   calculatePaginationMeta,
@@ -20,6 +19,8 @@ import { eq, inArray, sql } from 'drizzle-orm';
 export class WorkflowsRepository {
   constructor(private readonly database: DatabaseService) {}
 
+  // ── Workflow CRUD ─────────────────────────────────────────────────────────
+
   async findById(id: string) {
     const [workflow] = await this.database.db
       .select()
@@ -29,29 +30,29 @@ export class WorkflowsRepository {
 
     if (!workflow) return null;
 
-    const recipients = await this.database.db
+    const nodes = await this.database.db
       .select()
-      .from(workflowRecipients)
-      .where(eq(workflowRecipients.workflowId, id));
+      .from(workflowNodes)
+      .where(eq(workflowNodes.workflowId, id));
 
-    return { ...workflow, recipients };
+    const connections = await this.database.db
+      .select()
+      .from(workflowConnections)
+      .where(eq(workflowConnections.workflowId, id));
+
+    return { ...workflow, nodes, connections };
   }
 
   async findAllByUserId(userId: string, query: WorkflowListQueryInput) {
     const offset = (query.page - 1) * query.pageSize;
-
     const baseWhereClause = eq(workflows.createdBy, userId);
 
     const orderByColumn = (() => {
-      if (query.sortBy === WORKFLOW_SORT_FIELDS.NAME) {
-        return workflows.name;
-      }
-      if (query.sortBy === WORKFLOW_SORT_FIELDS.UPDATED_AT) {
+      if (query.sortBy === WORKFLOW_SORT_FIELDS.NAME) return workflows.name;
+      if (query.sortBy === WORKFLOW_SORT_FIELDS.UPDATED_AT)
         return workflows.updatedAt;
-      }
-      if (query.sortBy === WORKFLOW_SORT_FIELDS.STATUS) {
+      if (query.sortBy === WORKFLOW_SORT_FIELDS.STATUS)
         return workflows.isActive;
-      }
       return workflows.createdAt;
     })();
 
@@ -86,56 +87,47 @@ export class WorkflowsRepository {
       return { items: [], meta };
     }
 
+    // Batch-load node counts for all workflows
     const workflowIds = userWorkflows.map((w) => w.id);
+    const nodeCounts = await this.database.db
+      .select({
+        workflowId: workflowNodes.workflowId,
+        count: sql<number>`count(*)`,
+      })
+      .from(workflowNodes)
+      .where(inArray(workflowNodes.workflowId, workflowIds))
+      .groupBy(workflowNodes.workflowId);
 
-    const allRecipients = await this.database.db
-      .select()
-      .from(workflowRecipients)
-      .where(inArray(workflowRecipients.workflowId, workflowIds));
-
-    const recipientsByWorkflowId = allRecipients.reduce<
-      Record<string, typeof allRecipients>
-    >((acc, recipient) => {
-      const existing = acc[recipient.workflowId] ?? [];
-      existing.push(recipient);
-      acc[recipient.workflowId] = existing;
-      return acc;
-    }, {});
+    const nodeCountByWorkflowId = new Map(
+      nodeCounts.map((row) => [row.workflowId, Number(row.count)]),
+    );
 
     return {
       items: userWorkflows.map((workflow) => ({
         ...workflow,
-        recipients: recipientsByWorkflowId[workflow.id] ?? [],
+        nodeCount: nodeCountByWorkflowId.get(workflow.id) ?? 0,
       })),
       meta,
     };
   }
 
-  async create(
-    workflowData: NewWorkflow,
-    recipientData: Omit<
-      NewWorkflowRecipient,
-      'workflowId' | 'id' | 'createdAt'
-    >[],
-  ) {
-    return this.database.db.transaction(async (tx) => {
-      const [created] = await tx
-        .insert(workflows)
-        .values(workflowData)
-        .returning();
+  async create(data: NewWorkflow) {
+    const [created] = await this.database.db
+      .insert(workflows)
+      .values(data)
+      .returning();
 
-      const recipients =
-        recipientData.length > 0
-          ? await tx
-              .insert(workflowRecipients)
-              .values(
-                recipientData.map((r) => ({ ...r, workflowId: created.id })),
-              )
-              .returning()
-          : [];
+    return created;
+  }
 
-      return { ...created, recipients };
-    });
+  async updateName(id: string, name: string) {
+    const [updated] = await this.database.db
+      .update(workflows)
+      .set({ name, updatedAt: new Date() })
+      .where(eq(workflows.id, id))
+      .returning();
+
+    return updated ?? null;
   }
 
   async updateIsActive(id: string, isActive: boolean) {
@@ -148,66 +140,175 @@ export class WorkflowsRepository {
     return updated ?? null;
   }
 
-  async updateCanvasState(id: string, canvasState: WorkflowCanvasState) {
-    const [updated] = await this.database.db
+  async deleteById(id: string) {
+    await this.database.db.delete(workflows).where(eq(workflows.id, id));
+  }
+
+  // ── Node CRUD ─────────────────────────────────────────────────────────────
+
+  async createNode(data: NewWorkflowNode) {
+    const [created] = await this.database.db
+      .insert(workflowNodes)
+      .values(data)
+      .returning();
+
+    // Touch workflow updatedAt
+    await this.database.db
       .update(workflows)
-      .set({ canvasState, updatedAt: new Date() })
-      .where(eq(workflows.id, id))
+      .set({ updatedAt: new Date() })
+      .where(eq(workflows.id, data.workflowId));
+
+    return created;
+  }
+
+  async deleteNode(nodeId: string) {
+    // Get the node's workflowId before deleting
+    const [node] = await this.database.db
+      .select({ workflowId: workflowNodes.workflowId })
+      .from(workflowNodes)
+      .where(eq(workflowNodes.id, nodeId))
+      .limit(1);
+
+    await this.database.db
+      .delete(workflowNodes)
+      .where(eq(workflowNodes.id, nodeId));
+
+    if (node) {
+      await this.database.db
+        .update(workflows)
+        .set({ updatedAt: new Date() })
+        .where(eq(workflows.id, node.workflowId));
+    }
+  }
+
+  async updateNodeData(nodeId: string, data: Record<string, unknown>) {
+    const [updated] = await this.database.db
+      .update(workflowNodes)
+      .set({ data, updatedAt: new Date() })
+      .where(eq(workflowNodes.id, nodeId))
       .returning();
 
     return updated ?? null;
   }
 
-  async update(
-    id: string,
-    workflowData: Partial<Workflow>,
-    recipientData: Omit<
-      NewWorkflowRecipient,
-      'workflowId' | 'id' | 'createdAt'
-    >[],
-  ) {
-    return this.database.db.transaction(async (tx) => {
-      const [updatedWorkflow] = await tx
-        .update(workflows)
-        .set({
-          ...workflowData,
-          updatedAt: new Date(),
-        })
-        .where(eq(workflows.id, id))
-        .returning();
+  async updateNodePosition(nodeId: string, position: { x: number; y: number }) {
+    const [updated] = await this.database.db
+      .update(workflowNodes)
+      .set({ position, updatedAt: new Date() })
+      .where(eq(workflowNodes.id, nodeId))
+      .returning();
 
-      if (!updatedWorkflow) {
-        return null;
-      }
-
-      await tx
-        .delete(workflowRecipients)
-        .where(eq(workflowRecipients.workflowId, id));
-
-      const recipients =
-        recipientData.length > 0
-          ? await tx
-              .insert(workflowRecipients)
-              .values(
-                recipientData.map((recipient) => ({
-                  ...recipient,
-                  workflowId: id,
-                })),
-              )
-              .returning()
-          : [];
-
-      return { ...updatedWorkflow, recipients };
-    });
+    return updated ?? null;
   }
 
-  async deleteById(id: string) {
-    await this.database.db.delete(workflows).where(eq(workflows.id, id));
-  }
+  // ── Connection CRUD ───────────────────────────────────────────────────────
 
-  async deleteRecipient(recipientId: string) {
+  async createConnection(data: {
+    workflowId: string;
+    fromNodeId: string;
+    toNodeId: string;
+    fromOutput?: string;
+    toInput?: string;
+  }) {
+    const [created] = await this.database.db
+      .insert(workflowConnections)
+      .values(data)
+      .returning();
+
     await this.database.db
-      .delete(workflowRecipients)
-      .where(eq(workflowRecipients.id, recipientId));
+      .update(workflows)
+      .set({ updatedAt: new Date() })
+      .where(eq(workflows.id, data.workflowId));
+
+    return created;
+  }
+
+  async deleteConnection(connectionId: string) {
+    const [connection] = await this.database.db
+      .select({ workflowId: workflowConnections.workflowId })
+      .from(workflowConnections)
+      .where(eq(workflowConnections.id, connectionId))
+      .limit(1);
+
+    await this.database.db
+      .delete(workflowConnections)
+      .where(eq(workflowConnections.id, connectionId));
+
+    if (connection) {
+      await this.database.db
+        .update(workflows)
+        .set({ updatedAt: new Date() })
+        .where(eq(workflows.id, connection.workflowId));
+    }
+  }
+
+  /**
+   * Find the node that owns a given nodeId (for ownership checks).
+   */
+  async findNodeOwner(nodeId: string) {
+    const [node] = await this.database.db
+      .select({
+        workflowId: workflowNodes.workflowId,
+      })
+      .from(workflowNodes)
+      .where(eq(workflowNodes.id, nodeId))
+      .limit(1);
+
+    if (!node) return null;
+
+    const [workflow] = await this.database.db
+      .select({
+        createdBy: workflows.createdBy,
+      })
+      .from(workflows)
+      .where(eq(workflows.id, node.workflowId))
+      .limit(1);
+
+    if (!workflow) return null;
+
+    return {
+      workflowId: node.workflowId,
+      createdBy: workflow.createdBy,
+    };
+  }
+
+  /**
+   * Find the connection's owner (for ownership checks).
+   */
+  async findConnectionOwner(connectionId: string) {
+    const [connection] = await this.database.db
+      .select({
+        workflowId: workflowConnections.workflowId,
+      })
+      .from(workflowConnections)
+      .where(eq(workflowConnections.id, connectionId))
+      .limit(1);
+
+    if (!connection) return null;
+
+    const [workflow] = await this.database.db
+      .select({
+        createdBy: workflows.createdBy,
+      })
+      .from(workflows)
+      .where(eq(workflows.id, connection.workflowId))
+      .limit(1);
+
+    if (!workflow) return null;
+
+    return {
+      workflowId: connection.workflowId,
+      createdBy: workflow.createdBy,
+    };
+  }
+
+  /**
+   * Load connections for a workflow (used for cycle detection).
+   */
+  async findConnectionsByWorkflowId(workflowId: string) {
+    return this.database.db
+      .select()
+      .from(workflowConnections)
+      .where(eq(workflowConnections.workflowId, workflowId));
   }
 }

@@ -5,15 +5,22 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1773758687769,
-      "tag": "0000_cynical_satana",
+      "when": 1773811627729,
+      "tag": "0000_dark_grim_reaper",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1773797545168,
-      "tag": "0001_burly_rockslide",
+      "when": 1773814401724,
+      "tag": "0001_thick_roughhouse",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773816828692,
+      "tag": "0002_bouncy_spencer_smythe",
       "breakpoints": true
     }
   ]

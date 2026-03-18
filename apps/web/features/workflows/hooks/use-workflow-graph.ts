@@ -1,22 +1,12 @@
-import {
-  type WorkflowCanvasState,
-  workflowCanvasNodePositionSchema,
-} from '@spexs/types';
+import type { NodeExecutionStatus } from '@spexs/types';
 import type { Edge } from '@xyflow/react';
 import { useMemo } from 'react';
 import type {
-  MessageNode,
-  RecipientNode,
-  TriggerNode,
   WorkflowCanvasNode,
-  WorkflowWithRecipients,
+  WorkflowConnectionRow,
+  WorkflowDetail,
+  WorkflowNodeRow,
 } from '../types/canvas';
-
-const NODE_WIDTH = 320;
-const TRIGGER_HEIGHT = 164;
-const MESSAGE_HEIGHT = 120;
-const VERTICAL_GAP = 72;
-const HORIZONTAL_GAP = 24;
 
 const ACTIVE_EDGE_STYLE = { stroke: '#6366f1', strokeWidth: 2 } as const;
 const INACTIVE_EDGE_STYLE = {
@@ -24,121 +14,84 @@ const INACTIVE_EDGE_STYLE = {
   strokeWidth: 2,
   strokeDasharray: '6 3',
 } as const;
-const CANVAS_NODE_KIND = workflowCanvasNodePositionSchema.shape.kind.enum;
 
-function computeRecipientStartX(count: number): number {
-  const totalWidth =
-    count * NODE_WIDTH + Math.max(0, count - 1) * HORIZONTAL_GAP;
-  return -(totalWidth / 2);
+/**
+ * Map node type to React Flow node type string for the `nodeTypes` registry.
+ * All nodes use the generic 'workflow' node type.
+ */
+function toReactFlowNodeType(nodeType: string): string {
+  if (nodeType.startsWith('trigger_')) return 'trigger';
+  if (nodeType.startsWith('output_')) return 'message';
+  if (nodeType.startsWith('recipient_')) return 'recipient';
+  return 'default';
 }
 
-function getDefaultNodes(
-  workflow: WorkflowWithRecipients,
-): WorkflowCanvasNode[] {
-  const triggerNode: TriggerNode = {
-    id: 'trigger',
-    type: CANVAS_NODE_KIND.TRIGGER,
-    position: { x: -(NODE_WIDTH / 2), y: 0 },
+function nodeRowToCanvasNode(
+  nodeRow: WorkflowNodeRow,
+  workflowId: string,
+  isActive: boolean,
+  executionStatus?: NodeExecutionStatus,
+): WorkflowCanvasNode {
+  const position = nodeRow.position as { x: number; y: number };
+
+  return {
+    id: nodeRow.id,
+    type: toReactFlowNodeType(nodeRow.type),
+    position: { x: position.x, y: position.y },
     data: {
-      workflowId: workflow.id,
-      workflowName: workflow.name,
-      triggerType: workflow.triggerType,
-      metricName: workflow.metricName,
-      operator: workflow.operator,
-      thresholdValue: workflow.thresholdValue,
-      baseValue: workflow.baseValue,
-      deviationPercentage: workflow.deviationPercentage,
-      isActive: workflow.isActive,
+      nodeId: nodeRow.id,
+      nodeType: nodeRow.type,
+      label: nodeRow.name,
+      nodeData: (nodeRow.data ?? {}) as Record<string, unknown>,
+      workflowId,
+      isActive,
+      executionStatus,
     },
     draggable: true,
     selectable: true,
   };
-
-  const messageY = TRIGGER_HEIGHT + VERTICAL_GAP;
-  const messageNode: MessageNode = {
-    id: 'message',
-    type: CANVAS_NODE_KIND.MESSAGE,
-    position: { x: -(NODE_WIDTH / 2), y: messageY },
-    data: {
-      workflowId: workflow.id,
-      messageTemplate: workflow.messageTemplate,
-    },
-    draggable: true,
-    selectable: true,
-  };
-
-  const recipientsY = messageY + MESSAGE_HEIGHT + VERTICAL_GAP;
-  const startX = computeRecipientStartX(workflow.recipients.length);
-
-  const recipientNodes: RecipientNode[] = workflow.recipients.map(
-    (recipient, index) => ({
-      id: `recipient-${recipient.id}`,
-      type: CANVAS_NODE_KIND.RECIPIENT,
-      position: {
-        x: startX + index * (NODE_WIDTH + HORIZONTAL_GAP),
-        y: recipientsY,
-      },
-      data: {
-        workflowId: workflow.id,
-        recipientId: recipient.id,
-        channel: recipient.channel,
-        recipient: recipient.recipient,
-      },
-      draggable: true,
-      selectable: true,
-    }),
-  );
-
-  return [triggerNode, messageNode, ...recipientNodes];
 }
 
-export function useWorkflowGraph(workflow: WorkflowWithRecipients) {
+function connectionRowToEdge(
+  connection: WorkflowConnectionRow,
+  isActive: boolean,
+): Edge {
+  return {
+    id: connection.id,
+    source: connection.fromNodeId,
+    target: connection.toNodeId,
+    sourceHandle: connection.fromOutput,
+    targetHandle: connection.toInput,
+    type: 'smoothstep',
+    animated: isActive,
+    style: isActive ? ACTIVE_EDGE_STYLE : INACTIVE_EDGE_STYLE,
+  };
+}
+
+/**
+ * Converts the workflow's DB-backed nodes and connections into React Flow
+ * nodes and edges. This is the single source of truth for the canvas graph.
+ */
+export function useWorkflowGraph(
+  workflow: WorkflowDetail,
+  nodeStatuses?: Record<string, any>,
+) {
   return useMemo(() => {
-    const defaultNodes = getDefaultNodes(workflow);
-    const defaultNodePositionsById = new Map(
-      defaultNodes.map((node) => [node.id, node.position]),
+    const nodes = workflow.nodes.map((nodeRow) => {
+      const statusData = nodeStatuses?.[nodeRow.id];
+      const status = statusData ? statusData.status : undefined;
+      return nodeRowToCanvasNode(
+        nodeRow,
+        workflow.id,
+        workflow.isActive,
+        status,
+      );
+    });
+
+    const edges = workflow.connections.map((connection) =>
+      connectionRowToEdge(connection, workflow.isActive),
     );
-    const canvasState: WorkflowCanvasState = workflow.canvasState ?? {
-      nodePositions: [],
-      edges: [],
-    };
-
-    const edgeStyle = workflow.isActive
-      ? ACTIVE_EDGE_STYLE
-      : INACTIVE_EDGE_STYLE;
-    const nodeIds = new Set(defaultNodes.map((node) => node.id));
-    const nodePositionsById = new Map(
-      canvasState.nodePositions.map((nodePosition) => [
-        nodePosition.nodeId,
-        { x: nodePosition.x, y: nodePosition.y },
-      ]),
-    );
-
-    const nodes = defaultNodes.map((node) => ({
-      ...node,
-      position: nodePositionsById.get(node.id) ??
-        defaultNodePositionsById.get(node.id) ?? { x: 0, y: 0 },
-    }));
-
-    const storedConnectedEdges = canvasState.edges.filter(
-      (edge) =>
-        edge.sourceNodeId !== null &&
-        edge.targetNodeId !== null &&
-        nodeIds.has(edge.sourceNodeId) &&
-        nodeIds.has(edge.targetNodeId),
-    );
-
-    const edges: Edge[] = storedConnectedEdges.map((edge) => ({
-      id: edge.edgeId,
-      source: edge.sourceNodeId ?? '',
-      target: edge.targetNodeId ?? '',
-      sourceHandle: edge.sourceHandleId ?? undefined,
-      targetHandle: edge.targetHandleId ?? undefined,
-      type: 'smoothstep',
-      animated: workflow.isActive,
-      style: edgeStyle,
-    }));
 
     return { nodes, edges };
-  }, [workflow]);
+  }, [workflow, nodeStatuses]);
 }

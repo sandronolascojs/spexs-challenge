@@ -84,31 +84,33 @@ export function SignupForm() {
 
       <form onSubmit={handleSubmit(onSubmit)}>
         <FieldGroup>
-          <Field data-invalid={!!errors.firstName}>
-            <FieldLabel htmlFor="firstName">First name</FieldLabel>
-            <Input
-              id="firstName"
-              type="text"
-              placeholder="John"
-              autoComplete="given-name"
-              aria-invalid={!!errors.firstName}
-              {...register('firstName')}
-            />
-            <FieldError>{errors.firstName?.message}</FieldError>
-          </Field>
+          <div className="flex gap-3">
+            <Field className="flex-1" data-invalid={!!errors.firstName}>
+              <FieldLabel htmlFor="firstName">First name</FieldLabel>
+              <Input
+                id="firstName"
+                type="text"
+                placeholder="John"
+                autoComplete="given-name"
+                aria-invalid={!!errors.firstName}
+                {...register('firstName')}
+              />
+              <FieldError>{errors.firstName?.message}</FieldError>
+            </Field>
 
-          <Field data-invalid={!!errors.lastName}>
-            <FieldLabel htmlFor="lastName">Last name</FieldLabel>
-            <Input
-              id="lastName"
-              type="text"
-              placeholder="Doe"
-              autoComplete="family-name"
-              aria-invalid={!!errors.lastName}
-              {...register('lastName')}
-            />
-            <FieldError>{errors.lastName?.message}</FieldError>
-          </Field>
+            <Field className="flex-1" data-invalid={!!errors.lastName}>
+              <FieldLabel htmlFor="lastName">Last name</FieldLabel>
+              <Input
+                id="lastName"
+                type="text"
+                placeholder="Doe"
+                autoComplete="family-name"
+                aria-invalid={!!errors.lastName}
+                {...register('lastName')}
+              />
+              <FieldError>{errors.lastName?.message}</FieldError>
+            </Field>
+          </div>
 
           <Field data-invalid={!!errors.email}>
             <FieldLabel htmlFor="email">Email</FieldLabel>

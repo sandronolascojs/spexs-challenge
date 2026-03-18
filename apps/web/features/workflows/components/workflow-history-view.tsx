@@ -2,26 +2,31 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useTRPC } from '@/lib/trpc/client';
-import { EventStatus } from '@spexs/types';
-import { useQuery } from '@tanstack/react-query';
+import { AlertEventStatus } from '@spexs/types';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   Clock,
   History,
   Loader2,
+  MessageSquare,
 } from 'lucide-react';
 import { useQueryStates } from 'nuqs';
 import { useState } from 'react';
-import {
-  historyPageParser,
-  historyPageSizeParser,
-  historySortByParser,
-  historySortDirectionParser,
-  historyStatusParser,
-} from '../lib/search-params';
-import { ResolveEventDialog } from './resolve-event-dialog';
+import { historyPageParser, historyPageSizeParser } from '../lib/search-params';
 
 const HISTORY_PARAM_OPTIONS = { shallow: false } as const;
 
@@ -30,13 +35,13 @@ interface WorkflowHistoryViewProps {
 }
 
 const EVENT_STATUS_CONFIG = {
-  [EventStatus.OPEN]: {
-    label: 'Open',
-    variant: 'default' as const,
-    icon: AlertCircle,
-    className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  [AlertEventStatus.OPEN]: {
+    label: 'Open Alert',
+    variant: 'destructive' as const,
+    icon: AlertTriangle,
+    className: 'bg-destructive/10 text-destructive',
   },
-  [EventStatus.RESOLVED]: {
+  [AlertEventStatus.RESOLVED]: {
     label: 'Resolved',
     variant: 'secondary' as const,
     icon: CheckCircle2,
@@ -44,32 +49,89 @@ const EVENT_STATUS_CONFIG = {
   },
 } as const;
 
+function ResolveEventDialog({
+  eventId,
+  onResolve,
+}: { eventId: string; onResolve: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [comment, setComment] = useState('');
+  const trpc = useTRPC();
+
+  const mutation = useMutation(
+    trpc.events.resolve.mutationOptions({
+      onSuccess: () => {
+        setOpen(false);
+        setComment('');
+        onResolve();
+      },
+    }),
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="h-8 shadow-sm">
+          <CheckCircle2 className="mr-2 size-4 text-emerald-500" />
+          Resolve
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Resolve Alert Event</DialogTitle>
+        </DialogHeader>
+        <div className="py-4 space-y-3">
+          <div className="space-y-1">
+            <Label
+              htmlFor="comment"
+              className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+            >
+              Resolution Comment (Optional)
+            </Label>
+            <Textarea
+              id="comment"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="How was this alert resolved?"
+              className="resize-none"
+              rows={3}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate({ eventId, comment })}
+          >
+            {mutation.isPending && (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            )}
+            {mutation.isPending ? 'Resolving...' : 'Mark as Resolved'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
   const trpc = useTRPC();
-  const [resolveEventId, setResolveEventId] = useState<string | null>(null);
 
-  const [{ page, pageSize, sortBy, sortDirection, status }, setParams] =
-    useQueryStates(
-      {
-        page: historyPageParser,
-        pageSize: historyPageSizeParser,
-        status: historyStatusParser,
-        sortBy: historySortByParser,
-        sortDirection: historySortDirectionParser,
-      },
-      HISTORY_PARAM_OPTIONS,
-    );
+  const [{ page, pageSize }, setParams] = useQueryStates(
+    {
+      page: historyPageParser,
+      pageSize: historyPageSizeParser,
+    },
+    HISTORY_PARAM_OPTIONS,
+  );
 
-  const { data, isLoading, error } = useQuery(
-    trpc.events.listByWorkflow.queryOptions({
+  const { data, isLoading, error, refetch } = useQuery(
+    trpc.events.list.queryOptions({
       workflowId,
-      query: {
-        page,
-        pageSize,
-        sortBy,
-        sortDirection,
-        status: status ?? undefined,
-      },
+      page,
+      pageSize,
     }),
   );
 
@@ -99,10 +161,10 @@ export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
         <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-muted">
           <History className="size-7 text-muted-foreground" />
         </div>
-        <h3 className="mb-1 text-base font-semibold">No events yet</h3>
+        <h3 className="mb-1 text-base font-semibold">No alert events yet</h3>
         <p className="max-w-sm text-sm text-muted-foreground">
-          Events will appear here when the workflow is triggered. Use the
-          trigger button on the canvas to simulate an event.
+          Any triggered alerts will appear here requiring resolution. Simulate
+          the workflow to generate an event.
         </p>
       </div>
     );
@@ -112,9 +174,11 @@ export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
     <>
       <div className="space-y-3">
         {events.map((event) => {
-          const statusConfig = EVENT_STATUS_CONFIG[event.status as EventStatus];
-          const StatusIcon = statusConfig?.icon ?? Clock;
-          const isOpen = event.status === EventStatus.OPEN;
+          const statusConfig =
+            EVENT_STATUS_CONFIG[event.status as AlertEventStatus] ||
+            EVENT_STATUS_CONFIG.OPEN;
+          const StatusIcon = statusConfig.icon;
+          const trigData = event.triggerData as any;
 
           return (
             <div
@@ -122,63 +186,72 @@ export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
               className="rounded-xl border border-border/60 bg-card p-4 transition-colors hover:border-border"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3">
                   <div
-                    className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${statusConfig?.className ?? 'bg-muted'}`}
+                    className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg ${statusConfig.className}`}
                   >
-                    <StatusIcon className="size-4" />
+                    <StatusIcon className="size-5" />
                   </div>
 
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold">Event</span>
+                      <span className="text-sm font-semibold">
+                        Alert Triggered
+                      </span>
                       <Badge
-                        variant={statusConfig?.variant ?? 'secondary'}
-                        className="h-5 border-0 px-2 text-[10px] font-medium"
+                        variant={statusConfig.variant}
+                        className="h-5 border-0 px-2 text-[10px] font-medium uppercase"
                       >
-                        {statusConfig?.label ?? event.status}
+                        {statusConfig.label}
                       </Badge>
                     </div>
 
-                    <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                      <Clock className="size-3" />
-                      <span>{new Date(event.openedAt).toLocaleString()}</span>
-                      {event.resolvedAt && (
-                        <>
-                          <span className="text-border">·</span>
-                          <span>
-                            Resolved{' '}
-                            {new Date(event.resolvedAt).toLocaleString()}
+                    <div className="mt-1 flex flex-col gap-1">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Clock className="size-3" />
+                        <span>
+                          Opened: {new Date(event.createdAt).toLocaleString()}
+                        </span>
+                        {event.resolvedAt && (
+                          <>
+                            <span className="text-border">·</span>
+                            <span>
+                              Resolved:{' '}
+                              {new Date(event.resolvedAt).toLocaleString()}
+                            </span>
+                          </>
+                        )}
+                      </div>
+
+                      {trigData && (
+                        <div className="mt-2 text-sm bg-muted/40 p-2 rounded-md border border-border/50">
+                          <span className="font-medium">Details: </span>
+                          <span className="text-muted-foreground">
+                            Metric value{' '}
+                            <strong className="text-foreground">
+                              {trigData.metricValue}
+                            </strong>{' '}
+                            evaluated against threshold{' '}
+                            <strong className="text-foreground">
+                              {trigData.evaluatedThreshold}
+                            </strong>
+                            .
                           </span>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {isOpen && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="shrink-0"
-                    onClick={() => setResolveEventId(event.id)}
-                  >
-                    <CheckCircle2 className="mr-1.5 size-3.5" />
-                    Resolve
-                  </Button>
+                {event.status === AlertEventStatus.OPEN && (
+                  <div className="shrink-0">
+                    <ResolveEventDialog
+                      eventId={event.id}
+                      onResolve={() => refetch()}
+                    />
+                  </div>
                 )}
               </div>
-
-              {event.triggerPayload && (
-                <div className="mt-3 rounded-md bg-muted/40 px-3 py-2">
-                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Trigger Payload
-                  </p>
-                  <pre className="overflow-x-auto font-mono text-xs text-foreground/80">
-                    {JSON.stringify(event.triggerPayload, null, 2)}
-                  </pre>
-                </div>
-              )}
             </div>
           );
         })}
@@ -193,7 +266,7 @@ export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
             <Button
               size="sm"
               variant="outline"
-              disabled={!meta.hasPreviousPage}
+              disabled={page <= 1}
               onClick={() => setParams({ page: page - 1 })}
             >
               Previous
@@ -201,24 +274,13 @@ export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
             <Button
               size="sm"
               variant="outline"
-              disabled={!meta.hasNextPage}
+              disabled={page >= meta.totalPages}
               onClick={() => setParams({ page: page + 1 })}
             >
               Next
             </Button>
           </div>
         </div>
-      )}
-
-      {resolveEventId && (
-        <ResolveEventDialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setResolveEventId(null);
-          }}
-          eventId={resolveEventId}
-          workflowId={workflowId}
-        />
       )}
     </>
   );

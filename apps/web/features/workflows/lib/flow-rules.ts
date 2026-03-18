@@ -1,29 +1,10 @@
-import {
-  type WorkflowCanvasEdge,
-  type WorkflowCanvasNodePosition,
-  type WorkflowCanvasState,
-  workflowCanvasNodePositionSchema,
-} from '@spexs/types';
-import type { Edge, Node } from '@xyflow/react';
+import type { Edge } from '@xyflow/react';
 
-const CANVAS_NODE_KIND = workflowCanvasNodePositionSchema.shape.kind.enum;
-
-function getNodeKindFromNodeType(
-  type: string,
-): WorkflowCanvasNodePosition['kind'] | null {
-  if (type === CANVAS_NODE_KIND.TRIGGER) {
-    return CANVAS_NODE_KIND.TRIGGER;
-  }
-  if (type === CANVAS_NODE_KIND.MESSAGE) {
-    return CANVAS_NODE_KIND.MESSAGE;
-  }
-  if (type === CANVAS_NODE_KIND.RECIPIENT) {
-    return CANVAS_NODE_KIND.RECIPIENT;
-  }
-
-  return null;
-}
-
+/**
+ * Client-side cycle detection for the canvas.
+ * Checks if adding an edge from `sourceNodeId` to `targetNodeId` would
+ * create a cycle in the existing graph.
+ */
 export function createsCycle(
   existingEdges: readonly Edge[],
   sourceNodeId: string,
@@ -69,53 +50,4 @@ export function createsCycle(
   }
 
   return dfs(sourceNodeId);
-}
-
-export function buildWorkflowCanvasState(
-  nodes: readonly Node[],
-  edges: readonly Edge[],
-  existingCanvasState: WorkflowCanvasState,
-): WorkflowCanvasState {
-  const persistedNodePositions = nodes
-    .map((node) => {
-      const kind = getNodeKindFromNodeType(node.type ?? '');
-      if (!kind) {
-        return null;
-      }
-
-      return {
-        nodeId: node.id,
-        kind,
-        x: node.position.x,
-        y: node.position.y,
-      };
-    })
-    .filter(
-      (
-        nodePosition,
-      ): nodePosition is WorkflowCanvasState['nodePositions'][number] =>
-        nodePosition !== null,
-    );
-
-  const connectedEdges: WorkflowCanvasEdge[] = edges.map((edge) => ({
-    edgeId: edge.id,
-    sourceNodeId: edge.source,
-    targetNodeId: edge.target,
-    sourceHandleId: edge.sourceHandle ?? null,
-    targetHandleId: edge.targetHandle ?? null,
-  }));
-
-  const draftEdges = existingCanvasState.edges.filter(
-    (edge) => edge.sourceNodeId === null || edge.targetNodeId === null,
-  );
-
-  const edgesById = new Map<string, WorkflowCanvasEdge>();
-  for (const edge of [...connectedEdges, ...draftEdges]) {
-    edgesById.set(edge.edgeId, edge);
-  }
-
-  return {
-    nodePositions: persistedNodePositions,
-    edges: [...edgesById.values()],
-  };
 }

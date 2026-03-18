@@ -9,13 +9,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { useTRPC } from '@/lib/trpc/client';
-import {
-  ComparisonOperator,
-  type CreateWorkflowInput,
-  NotificationChannel,
-  TriggerType,
-  createWorkflowSchema,
-} from '@spexs/types';
+import { type CreateWorkflowInput, createWorkflowSchema } from '@spexs/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { CircleDashed, GitBranch, Sigma, Sparkles } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -39,12 +33,6 @@ interface WorkflowTemplate {
   input: CreateWorkflowInput;
 }
 
-const DEFAULT_MESSAGE_TEMPLATE = 'Alert: {{metrica}} has reached {{valor}}';
-const DEFAULT_RECIPIENT = {
-  channel: NotificationChannel.EMAIL,
-  recipient: 'user@example.com',
-};
-
 const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
   {
     id: WORKFLOW_TEMPLATE_IDS.THRESHOLD,
@@ -59,12 +47,6 @@ const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
     icon: GitBranch,
     input: {
       name: 'CPU Threshold Alert',
-      triggerType: TriggerType.THRESHOLD,
-      metricName: 'cpu_usage',
-      operator: ComparisonOperator.GREATER_THAN,
-      thresholdValue: 85,
-      messageTemplate: DEFAULT_MESSAGE_TEMPLATE,
-      recipients: [DEFAULT_RECIPIENT],
     },
   },
   {
@@ -80,11 +62,6 @@ const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
     icon: Sigma,
     input: {
       name: 'Memory Variance Watch',
-      triggerType: TriggerType.VARIANCE,
-      baseValue: 70,
-      deviationPercentage: 20,
-      messageTemplate: DEFAULT_MESSAGE_TEMPLATE,
-      recipients: [DEFAULT_RECIPIENT],
     },
   },
   {
@@ -96,12 +73,6 @@ const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
     icon: CircleDashed,
     input: {
       name: 'Untitled Workflow',
-      triggerType: TriggerType.THRESHOLD,
-      metricName: 'metric_name',
-      operator: ComparisonOperator.GREATER_THAN,
-      thresholdValue: 0,
-      messageTemplate: DEFAULT_MESSAGE_TEMPLATE,
-      recipients: [DEFAULT_RECIPIENT],
     },
   },
 ];

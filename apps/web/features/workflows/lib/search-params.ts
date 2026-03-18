@@ -1,8 +1,8 @@
 import {
+  AlertEventStatus,
   DEFAULT_PAGE,
   DEFAULT_SORT_DIRECTION,
   EVENT_SORT_FIELDS,
-  EventStatus,
   SMALL_PAGE_SIZE,
   SORT_DIRECTIONS,
 } from '@spexs/types';
@@ -21,10 +21,7 @@ export const workflowTabParser = parseAsStringLiteral(WORKFLOW_TAB_VALUES);
 
 // ── History pagination ────────────────────────────────────────────────────────
 
-const EVENT_STATUS_VALUES = Object.values(EventStatus) as [
-  EventStatus,
-  ...EventStatus[],
-];
+const EVENT_STATUS_VALUES = Object.values(AlertEventStatus);
 
 const SORT_DIRECTION_VALUES = [
   SORT_DIRECTIONS.ASC,

@@ -1,15 +1,19 @@
 import {
+  addConnectionSchema,
+  addNodeSchema,
   createWorkflowSchema,
-  deleteRecipientSchema,
   deleteWorkflowSchema,
+  removeConnectionSchema,
+  removeNodeSchema,
   toggleActiveSchema,
-  updateWorkflowCanvasSchema,
+  updateNodeDataSchema,
+  updateNodePositionSchema,
   updateWorkflowSchema,
   workflowListQuerySchema,
 } from '@spexs/types';
 import { z } from 'zod';
-import { TrpcService } from '../trpc/trpc.service';
-import { WorkflowsService } from './workflows.service';
+import type { TrpcService } from '../trpc/trpc.service';
+import type { WorkflowsService } from './workflows.service';
 
 /**
  * Builds the workflows tRPC sub-router.
@@ -23,6 +27,7 @@ export function buildWorkflowsRouter(
   service: WorkflowsService,
 ) {
   return trpc.router({
+    // ── Workflow CRUD ────────────────────────────────────────────────────
     list: trpc.protectedProcedure
       .input(workflowListQuerySchema)
       .query(({ ctx, input }) =>
@@ -35,16 +40,14 @@ export function buildWorkflowsRouter(
 
     create: trpc.protectedProcedure
       .input(createWorkflowSchema)
-      .mutation(({ input, ctx }) => service.create(input, ctx.session.user.id)),
+      .mutation(({ input, ctx }) =>
+        service.create(input.name, ctx.session.user.id),
+      ),
 
     update: trpc.protectedProcedure
       .input(updateWorkflowSchema)
-      .mutation(({ input, ctx }) => service.update(input, ctx.session.user.id)),
-
-    updateCanvas: trpc.protectedProcedure
-      .input(updateWorkflowCanvasSchema)
       .mutation(({ input, ctx }) =>
-        service.updateCanvas(input, ctx.session.user.id),
+        service.update(input.id, input.name, ctx.session.user.id),
       ),
 
     toggleActive: trpc.protectedProcedure
@@ -59,14 +62,55 @@ export function buildWorkflowsRouter(
         service.delete(input.id, ctx.session.user.id),
       ),
 
-    deleteRecipient: trpc.protectedProcedure
-      .input(deleteRecipientSchema)
+    // ── Node CRUD ───────────────────────────────────────────────────────
+    addNode: trpc.protectedProcedure
+      .input(addNodeSchema)
       .mutation(({ input, ctx }) =>
-        service.deleteRecipient(
+        service.addNode(
           input.workflowId,
-          input.recipientId,
+          {
+            type: input.type,
+            name: input.name,
+            data: input.data,
+            position: input.position,
+          },
           ctx.session.user.id,
         ),
+      ),
+
+    removeNode: trpc.protectedProcedure
+      .input(removeNodeSchema)
+      .mutation(({ input, ctx }) =>
+        service.removeNode(input.nodeId, ctx.session.user.id),
+      ),
+
+    updateNodeData: trpc.protectedProcedure
+      .input(updateNodeDataSchema)
+      .mutation(({ input, ctx }) =>
+        service.updateNodeData(input.nodeId, input.data, ctx.session.user.id),
+      ),
+
+    updateNodePosition: trpc.protectedProcedure
+      .input(updateNodePositionSchema)
+      .mutation(({ input, ctx }) =>
+        service.updateNodePosition(
+          input.nodeId,
+          input.position,
+          ctx.session.user.id,
+        ),
+      ),
+
+    // ── Connection CRUD ─────────────────────────────────────────────────
+    addConnection: trpc.protectedProcedure
+      .input(addConnectionSchema)
+      .mutation(({ input, ctx }) =>
+        service.addConnection(input, ctx.session.user.id),
+      ),
+
+    removeConnection: trpc.protectedProcedure
+      .input(removeConnectionSchema)
+      .mutation(({ input, ctx }) =>
+        service.removeConnection(input.connectionId, ctx.session.user.id),
       ),
   });
 }

@@ -1,8 +1,15 @@
 export { workflows } from './workflows';
 export type { Workflow, NewWorkflow } from './workflows';
 
-export { workflowRecipients } from './workflow-recipients';
+export { workflowNodes } from './workflow-nodes';
 export type {
-  WorkflowRecipient,
-  NewWorkflowRecipient,
-} from './workflow-recipients';
+  WorkflowNode,
+  NewWorkflowNode,
+  WorkflowNodePosition,
+} from './workflow-nodes';
+
+export { workflowConnections } from './workflow-connections';
+export type {
+  WorkflowConnection,
+  NewWorkflowConnection,
+} from './workflow-connections';

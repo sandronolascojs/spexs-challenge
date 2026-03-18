@@ -1,65 +1,103 @@
 import { z } from 'zod';
 import { SORT_DIRECTIONS, WORKFLOW_SORT_FIELDS } from '../constants/pagination';
-import {
-  ComparisonOperator,
-  NotificationChannel,
-  TriggerType,
-  WorkflowCanvasNodeKind,
-} from '../enums/workflows';
+import { ComparisonOperator, NodeType } from '../enums/workflows';
 import {
   createPaginatedResponseSchema,
   paginationQuerySchema,
 } from './pagination';
 
-// ── Shared sub-schemas ────────────────────────────────────────────────────────
+// ── Node data schemas (per NodeType) ──────────────────────────────────────────
 
-export const workflowRecipientSchema = z.object({
-  channel: z.enum([NotificationChannel.EMAIL, NotificationChannel.IN_APP]),
-  recipient: z.string().min(1),
+export const triggerThresholdDataSchema = z.object({
+  metricName: z.string().min(1),
+  operator: z.enum(ComparisonOperator),
+  thresholdValue: z.number(),
 });
 
-export const workflowCanvasNodePositionSchema = z.object({
-  nodeId: z.string().min(1),
-  kind: z.enum(WorkflowCanvasNodeKind),
+export const triggerVarianceDataSchema = z.object({
+  metricName: z.string().min(1),
+  baseValue: z.number(),
+  deviationPercentage: z.number().min(0).max(100),
+});
+
+export const outputMessageDataSchema = z.object({
+  template: z.string().min(1),
+});
+
+export const recipientEmailDataSchema = z.object({
+  email: z.email(),
+});
+
+export const recipientInAppDataSchema = z.object({
+  userId: z.string().optional(),
+});
+
+// ── Node position ─────────────────────────────────────────────────────────────
+
+export const nodePositionSchema = z.object({
   x: z.number(),
   y: z.number(),
 });
 
-export const workflowCanvasEdgeSchema = z.object({
-  edgeId: z.string().min(1),
-  sourceNodeId: z.string().min(1).nullable(),
-  targetNodeId: z.string().min(1).nullable(),
-  sourceHandleId: z.string().min(1).nullable(),
-  targetHandleId: z.string().min(1).nullable(),
+// ── Node CRUD schemas ─────────────────────────────────────────────────────────
+
+export const addNodeSchema = z.object({
+  workflowId: z.string().min(1),
+  type: z.enum(NodeType),
+  name: z.string().min(1),
+  data: z.record(z.string(), z.unknown()).default({}),
+  position: nodePositionSchema,
 });
 
-export const workflowCanvasStateSchema = z.object({
-  nodePositions: z.array(workflowCanvasNodePositionSchema),
-  edges: z.array(workflowCanvasEdgeSchema),
+export const removeNodeSchema = z.object({
+  nodeId: z.string().min(1),
 });
 
-// ── Create ────────────────────────────────────────────────────────────────────
-// Discriminated union so TypeScript narrows trigger-specific fields correctly.
+export const updateNodeDataSchema = z.object({
+  nodeId: z.string().min(1),
+  data: z.record(z.string(), z.unknown()),
+});
 
-const workflowBaseSchema = z.object({
+export const updateNodePositionSchema = z.object({
+  nodeId: z.string().min(1),
+  position: nodePositionSchema,
+});
+
+// ── Connection CRUD schemas ───────────────────────────────────────────────────
+
+export const addConnectionSchema = z.object({
+  workflowId: z.string().min(1),
+  fromNodeId: z.string().min(1),
+  toNodeId: z.string().min(1),
+  fromOutput: z.string().default('main'),
+  toInput: z.string().default('main'),
+});
+
+export const removeConnectionSchema = z.object({
+  connectionId: z.string().min(1),
+});
+
+// ── Workflow CRUD schemas (slimmed) ───────────────────────────────────────────
+
+export const createWorkflowSchema = z.object({
   name: z.string().min(1).max(255),
-  messageTemplate: z.string().min(1),
-  recipients: z.array(workflowRecipientSchema).min(1),
 });
 
-export const createWorkflowSchema = z.discriminatedUnion('triggerType', [
-  workflowBaseSchema.extend({
-    triggerType: z.literal(TriggerType.THRESHOLD),
-    metricName: z.string().min(1),
-    operator: z.enum(ComparisonOperator),
-    thresholdValue: z.number(),
-  }),
-  workflowBaseSchema.extend({
-    triggerType: z.literal(TriggerType.VARIANCE),
-    baseValue: z.number(),
-    deviationPercentage: z.number().min(0).max(100),
-  }),
-]);
+export const updateWorkflowSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(255),
+});
+
+export const toggleActiveSchema = z.object({
+  id: z.string().min(1),
+  isActive: z.boolean(),
+});
+
+export const deleteWorkflowSchema = z.object({
+  id: z.string().min(1),
+});
+
+// ── Workflow list query ───────────────────────────────────────────────────────
 
 export const workflowListQuerySchema = paginationQuerySchema.extend({
   sortBy: z
@@ -75,87 +113,42 @@ export const workflowListQuerySchema = paginationQuerySchema.extend({
     .default(SORT_DIRECTIONS.DESC),
 });
 
-export const updateWorkflowSchema = z.discriminatedUnion('triggerType', [
-  workflowBaseSchema.extend({
-    id: z.string().min(1),
-    triggerType: z.literal(TriggerType.THRESHOLD),
-    metricName: z.string().min(1),
-    operator: z.nativeEnum(ComparisonOperator),
-    thresholdValue: z.number(),
-  }),
-  workflowBaseSchema.extend({
-    id: z.string().min(1),
-    triggerType: z.literal(TriggerType.VARIANCE),
-    baseValue: z.number(),
-    deviationPercentage: z.number().min(0).max(100),
-  }),
-]);
-
-// ── Update ────────────────────────────────────────────────────────────────────
-
-export const toggleActiveSchema = z.object({
-  id: z.string().min(1),
-  isActive: z.boolean(),
-});
-
-export const deleteWorkflowSchema = z.object({
-  id: z.string().min(1),
-});
-
-export const deleteRecipientSchema = z.object({
-  workflowId: z.string().min(1),
-  recipientId: z.string().min(1),
-});
-
-export const updateWorkflowCanvasSchema = z.object({
-  id: z.string().min(1),
-  canvasState: workflowCanvasStateSchema,
-});
+// ── Workflow list item (for response typing) ──────────────────────────────────
 
 const workflowListItemSchema = z.object({
   id: z.string(),
   name: z.string(),
-  triggerType: z.enum(TriggerType),
-  metricName: z.string().nullable(),
-  operator: z.enum(ComparisonOperator).nullable(),
-  thresholdValue: z.number().nullable(),
-  baseValue: z.number().nullable(),
-  deviationPercentage: z.number().nullable(),
-  messageTemplate: z.string(),
   isActive: z.boolean(),
   createdBy: z.string(),
   createdAt: z.date(),
   updatedAt: z.date(),
-  recipients: z.array(
-    z.object({
-      id: z.string(),
-      workflowId: z.string(),
-      channel: z.enum(NotificationChannel),
-      recipient: z.string(),
-      createdAt: z.date(),
-    }),
-  ),
+  nodeCount: z.number(),
 });
 
 export const paginatedWorkflowListSchema = createPaginatedResponseSchema(
   workflowListItemSchema,
 );
 
-// ── Inferred types (use these instead of hand-writing interfaces) ─────────────
+// ── Inferred types ────────────────────────────────────────────────────────────
 
-export type WorkflowRecipientInput = z.infer<typeof workflowRecipientSchema>;
-export type WorkflowCanvasNodePosition = z.infer<
-  typeof workflowCanvasNodePositionSchema
->;
-export type WorkflowCanvasEdge = z.infer<typeof workflowCanvasEdgeSchema>;
-export type WorkflowCanvasState = z.infer<typeof workflowCanvasStateSchema>;
+export type TriggerThresholdData = z.infer<typeof triggerThresholdDataSchema>;
+export type TriggerVarianceData = z.infer<typeof triggerVarianceDataSchema>;
+export type OutputMessageData = z.infer<typeof outputMessageDataSchema>;
+export type RecipientEmailData = z.infer<typeof recipientEmailDataSchema>;
+export type RecipientInAppData = z.infer<typeof recipientInAppDataSchema>;
+export type NodePosition = z.infer<typeof nodePositionSchema>;
+
+export type AddNodeInput = z.infer<typeof addNodeSchema>;
+export type RemoveNodeInput = z.infer<typeof removeNodeSchema>;
+export type UpdateNodeDataInput = z.infer<typeof updateNodeDataSchema>;
+export type UpdateNodePositionInput = z.infer<typeof updateNodePositionSchema>;
+
+export type AddConnectionInput = z.infer<typeof addConnectionSchema>;
+export type RemoveConnectionInput = z.infer<typeof removeConnectionSchema>;
+
 export type CreateWorkflowInput = z.infer<typeof createWorkflowSchema>;
 export type WorkflowListQueryInput = z.infer<typeof workflowListQuerySchema>;
 export type PaginatedWorkflowList = z.infer<typeof paginatedWorkflowListSchema>;
 export type UpdateWorkflowInput = z.infer<typeof updateWorkflowSchema>;
-export type UpdateWorkflowCanvasInput = z.infer<
-  typeof updateWorkflowCanvasSchema
->;
 export type ToggleActiveInput = z.infer<typeof toggleActiveSchema>;
 export type DeleteWorkflowInput = z.infer<typeof deleteWorkflowSchema>;
-export type DeleteRecipientInput = z.infer<typeof deleteRecipientSchema>;

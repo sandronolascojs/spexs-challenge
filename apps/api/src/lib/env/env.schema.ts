@@ -23,9 +23,13 @@ export const EnvSchema = z.object({
   BETTER_AUTH_URL: z.url(),
 
   // ---------------------------------------------------------------------------
-  // Frontend
-  // ---------------------------------------------------------------------------
   FRONTEND_URL: z.url().default('http://localhost:3000'),
+
+  // ---------------------------------------------------------------------------
+  // Redis (Job Queue)
+  // ---------------------------------------------------------------------------
+  REDIS_HOST: z.string().default('localhost'),
+  REDIS_PORT: z.coerce.number().int().positive().default(6379),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

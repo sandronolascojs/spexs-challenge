@@ -1,9 +1,12 @@
 // Enums (pgEnum definitions)
 export {
-  triggerTypeEnum,
+  // New engine enums
+  nodeTypeEnum,
+  executionStatusEnum,
+  nodeExecutionStatusEnum,
+  alertEventStatusEnum,
+  // Shared
   comparisonOperatorEnum,
-  notificationChannelEnum,
-  eventStatusEnum,
 } from './enums';
 
 // Auth
@@ -12,5 +15,8 @@ export * from './auth';
 // Workflows
 export * from './workflows';
 
-// Events
+// Executions (new node-based engine)
+export * from './executions';
+
+// Events & Idempotency
 export * from './events';

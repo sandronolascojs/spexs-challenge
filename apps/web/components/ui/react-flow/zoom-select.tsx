@@ -36,8 +36,10 @@ export function ZoomSelect({
     [fitView, zoomTo],
   );
 
-  const zoomLevels = useStore((state) => {
-    const { minZoom, maxZoom } = state;
+  const minZoom = useStore((state) => state.minZoom);
+  const maxZoom = useStore((state) => state.maxZoom);
+
+  const zoomLevels = React.useMemo(() => {
     const levels = [];
     const zoomIncrement = 50;
 
@@ -50,7 +52,7 @@ export function ZoomSelect({
     }
 
     return levels;
-  });
+  }, [minZoom, maxZoom]);
 
   return (
     <Panel

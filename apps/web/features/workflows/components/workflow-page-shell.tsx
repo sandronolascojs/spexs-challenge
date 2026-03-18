@@ -32,7 +32,7 @@ export function WorkflowPageShell({ workflowId }: WorkflowPageShellProps) {
       >
         <TabsList>
           <TabsTrigger value="canvas">Canvas</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="history">Executions</TabsTrigger>
         </TabsList>
       </DashboardTopNavbar>
 
@@ -44,10 +44,10 @@ export function WorkflowPageShell({ workflowId }: WorkflowPageShellProps) {
         <div className="mx-auto max-w-3xl p-6">
           <div className="mb-6">
             <h2 className="text-lg font-semibold tracking-tight">
-              Event History
+              Execution History
             </h2>
             <p className="text-sm text-muted-foreground">
-              Triggered events and their resolutions.
+              Past workflow executions and their results.
             </p>
           </div>
           <WorkflowHistoryView workflowId={workflowId} />

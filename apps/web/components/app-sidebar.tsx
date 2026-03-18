@@ -3,8 +3,8 @@
 import { BellRing, GalleryVerticalEnd, GitBranch } from 'lucide-react';
 
 import { NavMain } from '@/components/nav-main';
-import { NavProjects } from '@/components/nav-projects';
 import { NavUser } from '@/components/nav-user';
+import { NavWorkflows } from '@/components/nav-workflows';
 import {
   Sidebar,
   SidebarContent,
@@ -35,11 +35,6 @@ const navMain = [
   },
 ];
 
-const pinnedWorkflows = [
-  { name: 'CPU Threshold Alert', url: '/workflows/1', icon: GitBranch },
-  { name: 'Memory Variance Watch', url: '/workflows/2', icon: GitBranch },
-];
-
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -55,7 +50,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
-        <NavProjects projects={pinnedWorkflows} />
+        <NavWorkflows />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

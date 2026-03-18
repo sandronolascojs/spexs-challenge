@@ -10,23 +10,21 @@ import {
 } from '@/components/ui/react-flow/base-node';
 import { NodeStatusIndicator } from '@/components/ui/react-flow/node-status-indicator';
 import { cn } from '@/lib/utils';
-import { TriggerType } from '@spexs/types';
+import { NodeType } from '@spexs/types';
 import { Position } from '@xyflow/react';
-import { Pencil, Zap } from 'lucide-react';
+import { Pencil, Trash2, Zap } from 'lucide-react';
+import { mapExecutionStatusToIndicator } from '../../lib/node-status';
 import { getOperatorLabel } from '../../lib/operator-label';
 import { useWorkflowDialogStore } from '../../stores/dialog-store';
-import type { TriggerNode as TriggerNodeType } from '../../types/canvas';
+import type { WorkflowNodeData } from '../../types/canvas';
 
-type Props = { data: TriggerNodeType['data'] };
+type Props = { data: WorkflowNodeData };
 
-function ThresholdBody({
-  metricName,
-  operator,
-  thresholdValue,
-}: Pick<
-  TriggerNodeType['data'],
-  'metricName' | 'operator' | 'thresholdValue'
->) {
+function ThresholdBody({ data }: { data: Record<string, unknown> }) {
+  const metricName = data.metricName as string | undefined;
+  const operator = data.operator as string | undefined;
+  const thresholdValue = data.thresholdValue as number | undefined;
+
   return (
     <div className="space-y-2.5">
       <div>
@@ -40,7 +38,7 @@ function ThresholdBody({
       <div className="flex items-center gap-2 rounded-md bg-muted/60 px-3 py-1.5">
         <span className="font-mono text-xs text-muted-foreground">value</span>
         <span className="font-mono text-sm font-bold text-primary">
-          {getOperatorLabel(operator)}
+          {operator ? getOperatorLabel(operator) : '—'}
         </span>
         <span className="font-mono text-xs font-semibold">
           {thresholdValue ?? '—'}
@@ -50,10 +48,10 @@ function ThresholdBody({
   );
 }
 
-function VarianceBody({
-  baseValue,
-  deviationPercentage,
-}: Pick<TriggerNodeType['data'], 'baseValue' | 'deviationPercentage'>) {
+function VarianceBody({ data }: { data: Record<string, unknown> }) {
+  const baseValue = data.baseValue as number | undefined;
+  const deviationPercentage = data.deviationPercentage as number | undefined;
+
   return (
     <div className="grid grid-cols-2 gap-3">
       <div>
@@ -75,19 +73,17 @@ function VarianceBody({
 }
 
 export function TriggerNode({ data }: Props) {
-  const isThreshold = data.triggerType === TriggerType.THRESHOLD;
-  const openDialog = useWorkflowDialogStore((state) => state.openDialog);
+  const isThreshold = data.nodeType === NodeType.TRIGGER_THRESHOLD;
+  const statusProp = data.executionStatus
+    ? mapExecutionStatusToIndicator(data.executionStatus)
+    : data.isActive
+      ? 'success'
+      : 'initial';
 
-  function handleEditClick(event: React.MouseEvent) {
-    event.stopPropagation();
-    openDialog({
-      type: 'edit-trigger',
-      data: { workflowId: data.workflowId },
-    });
-  }
+  const { openDialog } = useWorkflowDialogStore();
 
   return (
-    <NodeStatusIndicator status={data.isActive ? 'success' : 'initial'}>
+    <NodeStatusIndicator status={statusProp}>
       <BaseNode
         data-tour="workflow-trigger-node"
         className={cn(
@@ -98,18 +94,21 @@ export function TriggerNode({ data }: Props) {
         )}
       >
         <BaseNodeHeader>
-          <div className="flex size-5 items-center justify-center rounded bg-primary/10">
-            <Zap className="size-3 text-primary" />
+          <div className="flex items-center gap-2">
+            <div className="flex size-5 items-center justify-center rounded bg-primary/10">
+              <Zap className="size-3 text-primary" />
+            </div>
+            <BaseNodeHeaderTitle className="text-xs uppercase tracking-wider">
+              {data.label}
+            </BaseNodeHeaderTitle>
           </div>
-          <BaseNodeHeaderTitle className="text-xs uppercase tracking-wider">
-            {isThreshold ? 'Threshold Trigger' : 'Variance Trigger'}
-          </BaseNodeHeaderTitle>
+
           <div className="flex items-center gap-1">
             <span
               className={
                 data.isActive
-                  ? 'flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400'
-                  : 'flex items-center gap-1 text-[10px] font-semibold text-muted-foreground'
+                  ? 'mr-2 flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400'
+                  : 'mr-2 flex items-center gap-1 text-[10px] font-semibold text-muted-foreground'
               }
             >
               <span
@@ -120,26 +119,32 @@ export function TriggerNode({ data }: Props) {
             <Button
               variant="ghost"
               size="icon"
-              className="size-6 rounded-md hover:bg-accent"
-              onClick={handleEditClick}
+              className="size-7 hover:bg-muted"
+              onClick={() =>
+                openDialog({
+                  type: 'edit-trigger',
+                  data: { workflowId: data.workflowId },
+                })
+              }
             >
-              <Pencil className="size-3" />
+              <Pencil className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 cursor-not-allowed opacity-50 hover:bg-destructive/10 hover:text-destructive"
+              disabled
+            >
+              <Trash2 className="size-3.5" />
             </Button>
           </div>
         </BaseNodeHeader>
 
         <BaseNodeContent>
           {isThreshold ? (
-            <ThresholdBody
-              metricName={data.metricName}
-              operator={data.operator}
-              thresholdValue={data.thresholdValue}
-            />
+            <ThresholdBody data={data.nodeData} />
           ) : (
-            <VarianceBody
-              baseValue={data.baseValue}
-              deviationPercentage={data.deviationPercentage}
-            />
+            <VarianceBody data={data.nodeData} />
           )}
         </BaseNodeContent>
 

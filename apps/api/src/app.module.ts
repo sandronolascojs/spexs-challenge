@@ -1,3 +1,4 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { DatabaseModule, type DatabaseModuleOptions } from '@spexs/db';
 import { AuthModule } from '@thallesp/nestjs-better-auth';
@@ -14,6 +15,15 @@ import { TrpcModule } from './modules/trpc/trpc.module';
       inject: [EnvService],
       useFactory: (env: EnvService): DatabaseModuleOptions => ({
         databaseUrl: env.get('DATABASE_URL'),
+      }),
+    }),
+    BullModule.forRootAsync({
+      inject: [EnvService],
+      useFactory: (env: EnvService) => ({
+        connection: {
+          host: env.get('REDIS_HOST'),
+          port: env.get('REDIS_PORT'),
+        },
       }),
     }),
     AuthModule.forRoot({ auth }),

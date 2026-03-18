@@ -1,5 +1,5 @@
 {
-  "id": "2f35d26e-1c61-41b0-aff4-c8d0f0990dc8",
+  "id": "ffa92fb0-b3c6-4545-92df-4d345f044f0a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -368,8 +368,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.workflow_recipients": {
-      "name": "workflow_recipients",
+    "public.workflow_connections": {
+      "name": "workflow_connections",
       "schema": "",
       "columns": {
         "id": {
@@ -384,18 +384,31 @@
           "primaryKey": false,
           "notNull": true
         },
-        "channel": {
-          "name": "channel",
-          "type": "notification_channel",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "recipient": {
-          "name": "recipient",
+        "from_node_id": {
+          "name": "from_node_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "to_node_id": {
+          "name": "to_node_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_output": {
+          "name": "from_output",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'main'"
+        },
+        "to_input": {
+          "name": "to_input",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'main'"
         },
         "created_at": {
           "name": "created_at",
@@ -406,8 +419,8 @@
         }
       },
       "indexes": {
-        "workflow_recipients_workflow_id_idx": {
-          "name": "workflow_recipients_workflow_id_idx",
+        "workflow_connections_workflow_id_idx": {
+          "name": "workflow_connections_workflow_id_idx",
           "columns": [
             {
               "expression": "workflow_id",
@@ -421,23 +434,29 @@
           "method": "btree",
           "with": {}
         },
-        "workflow_recipients_unique_idx": {
-          "name": "workflow_recipients_unique_idx",
+        "workflow_connections_unique_idx": {
+          "name": "workflow_connections_unique_idx",
           "columns": [
             {
-              "expression": "workflow_id",
+              "expression": "from_node_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
-              "expression": "channel",
+              "expression": "to_node_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
-              "expression": "recipient",
+              "expression": "from_output",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "to_input",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -450,9 +469,133 @@
         }
       },
       "foreignKeys": {
-        "workflow_recipients_workflow_id_workflows_id_fk": {
-          "name": "workflow_recipients_workflow_id_workflows_id_fk",
-          "tableFrom": "workflow_recipients",
+        "workflow_connections_workflow_id_workflows_id_fk": {
+          "name": "workflow_connections_workflow_id_workflows_id_fk",
+          "tableFrom": "workflow_connections",
+          "tableTo": "workflows",
+          "columnsFrom": ["workflow_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "workflow_connections_from_node_id_workflow_nodes_id_fk": {
+          "name": "workflow_connections_from_node_id_workflow_nodes_id_fk",
+          "tableFrom": "workflow_connections",
+          "tableTo": "workflow_nodes",
+          "columnsFrom": ["from_node_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "workflow_connections_to_node_id_workflow_nodes_id_fk": {
+          "name": "workflow_connections_to_node_id_workflow_nodes_id_fk",
+          "tableFrom": "workflow_connections",
+          "tableTo": "workflow_nodes",
+          "columnsFrom": ["to_node_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workflow_nodes": {
+      "name": "workflow_nodes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "node_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "position": {
+          "name": "position",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "workflow_nodes_workflow_id_idx": {
+          "name": "workflow_nodes_workflow_id_idx",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflow_nodes_type_idx": {
+          "name": "workflow_nodes_type_idx",
+          "columns": [
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "workflow_nodes_workflow_id_workflows_id_fk": {
+          "name": "workflow_nodes_workflow_id_workflows_id_fk",
+          "tableFrom": "workflow_nodes",
           "tableTo": "workflows",
           "columnsFrom": ["workflow_id"],
           "columnsTo": ["id"],
@@ -478,50 +621,6 @@
         },
         "name": {
           "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "trigger_type": {
-          "name": "trigger_type",
-          "type": "trigger_type",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "metric_name": {
-          "name": "metric_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "operator": {
-          "name": "operator",
-          "type": "comparison_operator",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "threshold_value": {
-          "name": "threshold_value",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "base_value": {
-          "name": "base_value",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "deviation_percentage": {
-          "name": "deviation_percentage",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "message_template": {
-          "name": "message_template",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -857,6 +956,290 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
+    },
+    "public.executions": {
+      "name": "executions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "execution_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "triggered_by": {
+          "name": "triggered_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trigger_data": {
+          "name": "trigger_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "output": {
+          "name": "output",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "executions_workflow_id_idx": {
+          "name": "executions_workflow_id_idx",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "executions_status_idx": {
+          "name": "executions_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "executions_triggered_by_idx": {
+          "name": "executions_triggered_by_idx",
+          "columns": [
+            {
+              "expression": "triggered_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "executions_workflow_id_workflows_id_fk": {
+          "name": "executions_workflow_id_workflows_id_fk",
+          "tableFrom": "executions",
+          "tableTo": "workflows",
+          "columnsFrom": ["workflow_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "executions_triggered_by_users_id_fk": {
+          "name": "executions_triggered_by_users_id_fk",
+          "tableFrom": "executions",
+          "tableTo": "users",
+          "columnsFrom": ["triggered_by"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.node_executions": {
+      "name": "node_executions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "execution_id": {
+          "name": "execution_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "node_execution_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "input_data": {
+          "name": "input_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "output_data": {
+          "name": "output_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "node_executions_execution_id_idx": {
+          "name": "node_executions_execution_id_idx",
+          "columns": [
+            {
+              "expression": "execution_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "node_executions_node_id_idx": {
+          "name": "node_executions_node_id_idx",
+          "columns": [
+            {
+              "expression": "node_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "node_executions_status_idx": {
+          "name": "node_executions_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "node_executions_execution_id_executions_id_fk": {
+          "name": "node_executions_execution_id_executions_id_fk",
+          "tableFrom": "node_executions",
+          "tableTo": "executions",
+          "columnsFrom": ["execution_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "node_executions_node_id_workflow_nodes_id_fk": {
+          "name": "node_executions_node_id_workflow_nodes_id_fk",
+          "tableFrom": "node_executions",
+          "tableTo": "workflow_nodes",
+          "columnsFrom": ["node_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {
@@ -869,6 +1252,27 @@
       "name": "event_status",
       "schema": "public",
       "values": ["open", "resolved"]
+    },
+    "public.execution_status": {
+      "name": "execution_status",
+      "schema": "public",
+      "values": ["pending", "running", "success", "failed"]
+    },
+    "public.node_execution_status": {
+      "name": "node_execution_status",
+      "schema": "public",
+      "values": ["pending", "running", "success", "failed", "skipped"]
+    },
+    "public.node_type": {
+      "name": "node_type",
+      "schema": "public",
+      "values": [
+        "trigger_threshold",
+        "trigger_variance",
+        "output_message",
+        "recipient_email",
+        "recipient_in_app"
+      ]
     },
     "public.notification_channel": {
       "name": "notification_channel",

@@ -5,10 +5,8 @@ import {
   Background,
   BackgroundVariant,
   type Connection,
-  Controls,
-  type Edge,
-  type Node,
   type NodeTypes,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
   addEdge,
@@ -17,62 +15,95 @@ import {
   useNodesState,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { Button } from '@/components/ui/button';
 import { useTRPC } from '@/lib/trpc/client';
-import { type CreateWorkflowInput, createWorkflowSchema } from '@spexs/types';
+import { NodeExecutionStatus } from '@spexs/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Loader2 } from 'lucide-react';
-import { useEffect } from 'react';
+import {
+  AlertCircle,
+  Bell,
+  Loader2,
+  Mail,
+  MessageSquare,
+  Plus,
+  TrendingUp,
+  Zap,
+} from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import { useWorkflowGraph } from '../hooks/use-workflow-graph';
-import { buildWorkflowCanvasState, createsCycle } from '../lib/flow-rules';
+import { createsCycle } from '../lib/flow-rules';
 import { useWorkflowDialogStore } from '../stores/dialog-store';
-import type { WorkflowWithRecipients } from '../types/canvas';
+import type { WorkflowDetail } from '../types/canvas';
+import { NodePanel } from './node-panel';
+import { WorkflowDialogs } from './nodes/edit/workflow-dialogs';
 import { MessageNode } from './nodes/message-node';
 import { RecipientNode } from './nodes/recipient-node';
 import { TriggerNode } from './nodes/trigger-node';
 import { TriggerWorkflowButton } from './trigger-workflow-button';
-import { WorkflowNodeDialog } from './workflow-node-dialog';
 
 // ── Node type registry ────────────────────────────────────────────────────────
-// Defined outside the component to avoid re-registering on each render.
 const NODE_TYPES: NodeTypes = {
   trigger: TriggerNode,
   message: MessageNode,
   recipient: RecipientNode,
 };
 
-// ── Inner canvas ──────────────────────────────────────────────────────────────
-// Separated so `useWorkflowGraph` stays inside the ReactFlowProvider tree.
-function WorkflowCanvasInner({
-  workflow,
-}: { workflow: WorkflowWithRecipients }) {
-  const { nodes: initialNodes, edges: initialEdges } =
-    useWorkflowGraph(workflow);
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+const EMPTY_STATUSES = {};
+
+function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
+  const [executionId, setExecutionId] = useState<string | null>(null);
+  const setNodePanelOpen = useWorkflowDialogStore((s) => s.setNodePanelOpen);
+
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const closeDialog = useWorkflowDialogStore((state) => state.closeDialog);
 
-  const updateMutation = useMutation(
-    trpc.workflows.update.mutationOptions({
-      onSuccess: async () => {
-        await queryClient.invalidateQueries(
-          trpc.workflows.getById.queryFilter({ id: workflow.id }),
-        );
-        await queryClient.invalidateQueries(trpc.workflows.list.queryFilter());
-        closeDialog();
-      },
+  // TRPC Polling for execution progress
+  const { data: progressData } = useQuery({
+    ...trpc.executions.getProgress.queryOptions({
+      executionId: executionId || '',
+    }),
+    enabled: !!executionId,
+    refetchInterval: executionId ? 1000 : false,
+  });
+
+  const nodeStatuses = progressData ?? EMPTY_STATUSES;
+  const isExecuting = Object.values(nodeStatuses).some(
+    (s: any) => s.status === NodeExecutionStatus.RUNNING,
+  );
+
+  const { nodes: initialNodes, edges: initialEdges } = useWorkflowGraph(
+    workflow,
+    nodeStatuses,
+  );
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  const invalidateWorkflow = useCallback(() => {
+    void queryClient.invalidateQueries(
+      trpc.workflows.getById.queryFilter({ id: workflow.id }),
+    );
+  }, [queryClient, trpc, workflow.id]);
+
+  const removeNodeMutation = useMutation(
+    trpc.workflows.removeNode.mutationOptions({
+      onSuccess: invalidateWorkflow,
     }),
   );
 
-  const updateCanvasMutation = useMutation(
-    trpc.workflows.updateCanvas.mutationOptions({
-      onSuccess: async () => {
-        await queryClient.invalidateQueries(
-          trpc.workflows.getById.queryFilter({ id: workflow.id }),
-        );
-      },
+  const addConnectionMutation = useMutation(
+    trpc.workflows.addConnection.mutationOptions({
+      onSuccess: invalidateWorkflow,
     }),
+  );
+
+  const removeConnectionMutation = useMutation(
+    trpc.workflows.removeConnection.mutationOptions({
+      onSuccess: invalidateWorkflow,
+    }),
+  );
+
+  const updateNodePositionMutation = useMutation(
+    trpc.workflows.updateNodePosition.mutationOptions(),
   );
 
   useEffect(() => {
@@ -80,53 +111,34 @@ function WorkflowCanvasInner({
     setEdges(initialEdges);
   }, [initialEdges, initialNodes, setEdges, setNodes]);
 
-  function persistCanvasState(nextNodes: Node[], nextEdges: Edge[]) {
-    const canvasState = buildWorkflowCanvasState(
-      nextNodes,
-      nextEdges,
-      workflow.canvasState,
-    );
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      if (createsCycle(edges, connection.source, connection.target)) return;
 
-    updateCanvasMutation.mutate({
-      id: workflow.id,
-      canvasState,
-    });
-  }
-
-  function handleSaveWorkflow(nextInput: CreateWorkflowInput) {
-    const validation = createWorkflowSchema.safeParse(nextInput);
-    if (!validation.success) {
-      return;
-    }
-
-    updateMutation.mutate({
-      id: workflow.id,
-      ...validation.data,
-    });
-  }
-
-  const handleConnect = (connection: Connection) => {
-    if (!connection.source || !connection.target) {
-      return;
-    }
-
-    if (createsCycle(edges, connection.source, connection.target)) {
-      return;
-    }
-
-    setEdges((currentEdges) => {
-      const nextEdges = addEdge(
-        {
-          ...connection,
-          type: 'smoothstep',
-          animated: workflow.isActive,
-        },
-        currentEdges,
+      // Optimistic: update local state immediately
+      setEdges((currentEdges) =>
+        addEdge(
+          {
+            ...connection,
+            type: 'smoothstep',
+            animated: workflow.isActive,
+          },
+          currentEdges,
+        ),
       );
-      persistCanvasState(nodes, nextEdges);
-      return nextEdges;
-    });
-  };
+
+      // Persist to DB
+      addConnectionMutation.mutate({
+        workflowId: workflow.id,
+        fromNodeId: connection.source,
+        toNodeId: connection.target,
+        fromOutput: connection.sourceHandle ?? 'main',
+        toInput: connection.targetHandle ?? 'main',
+      });
+    },
+    [edges, setEdges, workflow.isActive, workflow.id, addConnectionMutation],
+  );
 
   return (
     <>
@@ -137,51 +149,49 @@ function WorkflowCanvasInner({
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
         isValidConnection={(connection) => {
-          if (!connection.source || !connection.target) {
-            return false;
-          }
-
+          if (!connection.source || !connection.target) return false;
           return !createsCycle(edges, connection.source, connection.target);
         }}
         onNodeDragStop={(_, nextNode) => {
-          const nextNodes = nodes.map((node) =>
-            node.id === nextNode.id
-              ? { ...node, position: nextNode.position }
-              : node,
-          );
-          persistCanvasState(nextNodes, edges);
+          updateNodePositionMutation.mutate({
+            nodeId: nextNode.id,
+            position: { x: nextNode.position.x, y: nextNode.position.y },
+          });
         }}
         onReconnect={(oldEdge, newConnection) => {
-          if (!newConnection.source || !newConnection.target) {
-            return;
-          }
-
+          if (!newConnection.source || !newConnection.target) return;
           if (
             createsCycle(
               edges.filter((edge) => edge.id !== oldEdge.id),
               newConnection.source,
               newConnection.target,
             )
-          ) {
+          )
             return;
-          }
 
-          setEdges((currentEdges) => {
-            const nextEdges = reconnectEdge(
-              oldEdge,
-              newConnection,
-              currentEdges,
-            );
-            persistCanvasState(nodes, nextEdges);
-            return nextEdges;
+          setEdges((currentEdges) =>
+            reconnectEdge(oldEdge, newConnection, currentEdges),
+          );
+
+          // Remove old edge, create new connection
+          removeConnectionMutation.mutate({ connectionId: oldEdge.id });
+          addConnectionMutation.mutate({
+            workflowId: workflow.id,
+            fromNodeId: newConnection.source,
+            toNodeId: newConnection.target,
+            fromOutput: newConnection.sourceHandle ?? 'main',
+            toInput: newConnection.targetHandle ?? 'main',
           });
         }}
         onEdgesDelete={(deletedEdges) => {
-          const deletedEdgeIds = new Set(deletedEdges.map((edge) => edge.id));
-          const nextEdges = edges.filter(
-            (edge) => !deletedEdgeIds.has(edge.id),
-          );
-          persistCanvasState(nodes, nextEdges);
+          for (const edge of deletedEdges) {
+            removeConnectionMutation.mutate({ connectionId: edge.id });
+          }
+        }}
+        onNodesDelete={(deletedNodes) => {
+          for (const node of deletedNodes) {
+            removeNodeMutation.mutate({ nodeId: node.id });
+          }
         }}
         nodeTypes={NODE_TYPES}
         fitView
@@ -199,19 +209,26 @@ function WorkflowCanvasInner({
           size={1}
           className="opacity-40"
         />
-        <Controls
-          showInteractive={false}
-          className="!border !border-border !bg-card !text-foreground shadow-sm [&_button]:!border-border [&_button]:!bg-card [&_button]:!text-foreground [&_button:hover]:!bg-accent [&_button:hover]:!text-accent-foreground [&_svg]:!text-foreground"
-        />
         <ZoomSelect position="top-right" />
-        <TriggerWorkflowButton workflow={workflow} />
+        <Panel position="top-left" className="m-4">
+          <Button
+            size="sm"
+            className="gap-1.5 shadow-sm"
+            onClick={() => setNodePanelOpen(true)}
+          >
+            <Plus className="size-4" />
+            Add Node
+          </Button>
+        </Panel>
+        <TriggerWorkflowButton
+          workflow={workflow}
+          onTriggerSuccess={setExecutionId}
+          isExecuting={isExecuting}
+        />
       </ReactFlow>
 
-      <WorkflowNodeDialog
-        workflow={workflow}
-        isSaving={updateMutation.isPending}
-        onSave={handleSaveWorkflow}
-      />
+      <NodePanel workflowId={workflow.id} />
+      <WorkflowDialogs />
     </>
   );
 }
@@ -246,6 +263,11 @@ interface WorkflowCanvasProps {
 
 export function WorkflowCanvas({ workflowId }: WorkflowCanvasProps) {
   const trpc = useTRPC();
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const {
     data: workflow,
@@ -253,7 +275,7 @@ export function WorkflowCanvas({ workflowId }: WorkflowCanvasProps) {
     error,
   } = useQuery(trpc.workflows.getById.queryOptions({ id: workflowId }));
 
-  if (isLoading) return <CanvasLoading />;
+  if (!isMounted || isLoading) return <CanvasLoading />;
   if (error) return <CanvasError message="Failed to load workflow." />;
   if (!workflow) return <CanvasError message="Workflow not found." />;
 

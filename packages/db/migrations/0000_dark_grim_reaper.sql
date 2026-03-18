@@ -1,5 +1,8 @@
 CREATE TYPE "public"."comparison_operator" AS ENUM('gt', 'lt', 'gte', 'lte', 'eq');--> statement-breakpoint
 CREATE TYPE "public"."event_status" AS ENUM('open', 'resolved');--> statement-breakpoint
+CREATE TYPE "public"."execution_status" AS ENUM('pending', 'running', 'success', 'failed');--> statement-breakpoint
+CREATE TYPE "public"."node_execution_status" AS ENUM('pending', 'running', 'success', 'failed', 'skipped');--> statement-breakpoint
+CREATE TYPE "public"."node_type" AS ENUM('trigger_threshold', 'trigger_variance', 'output_message', 'recipient_email', 'recipient_in_app');--> statement-breakpoint
 CREATE TYPE "public"."notification_channel" AS ENUM('in_app', 'email');--> statement-breakpoint
 CREATE TYPE "public"."trigger_type" AS ENUM('threshold', 'variance');--> statement-breakpoint
 CREATE TABLE "accounts" (
@@ -48,24 +51,30 @@ CREATE TABLE "verifications" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "workflow_recipients" (
+CREATE TABLE "workflow_connections" (
 	"id" text PRIMARY KEY NOT NULL,
 	"workflow_id" text NOT NULL,
-	"channel" "notification_channel" NOT NULL,
-	"recipient" text NOT NULL,
+	"from_node_id" text NOT NULL,
+	"to_node_id" text NOT NULL,
+	"from_output" text DEFAULT 'main' NOT NULL,
+	"to_input" text DEFAULT 'main' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "workflow_nodes" (
+	"id" text PRIMARY KEY NOT NULL,
+	"workflow_id" text NOT NULL,
+	"type" "node_type" NOT NULL,
+	"name" text NOT NULL,
+	"data" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"position" jsonb NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflows" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
-	"trigger_type" "trigger_type" NOT NULL,
-	"metric_name" text,
-	"operator" "comparison_operator",
-	"threshold_value" double precision,
-	"base_value" double precision,
-	"deviation_percentage" double precision,
-	"message_template" text NOT NULL,
 	"is_active" boolean DEFAULT true NOT NULL,
 	"created_by" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -92,22 +101,57 @@ CREATE TABLE "events" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "executions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"workflow_id" text NOT NULL,
+	"status" "execution_status" DEFAULT 'pending' NOT NULL,
+	"triggered_by" text NOT NULL,
+	"trigger_data" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"error" text,
+	"output" jsonb,
+	"started_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"completed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "node_executions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"execution_id" text NOT NULL,
+	"node_id" text NOT NULL,
+	"status" "node_execution_status" DEFAULT 'pending' NOT NULL,
+	"input_data" jsonb,
+	"output_data" jsonb,
+	"error" text,
+	"started_at" timestamp with time zone,
+	"completed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "workflow_recipients" ADD CONSTRAINT "workflow_recipients_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_connections" ADD CONSTRAINT "workflow_connections_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_connections" ADD CONSTRAINT "workflow_connections_from_node_id_workflow_nodes_id_fk" FOREIGN KEY ("from_node_id") REFERENCES "public"."workflow_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_connections" ADD CONSTRAINT "workflow_connections_to_node_id_workflow_nodes_id_fk" FOREIGN KEY ("to_node_id") REFERENCES "public"."workflow_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_nodes" ADD CONSTRAINT "workflow_nodes_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflows" ADD CONSTRAINT "workflows_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "event_comments" ADD CONSTRAINT "event_comments_event_id_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "event_comments" ADD CONSTRAINT "event_comments_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "events" ADD CONSTRAINT "events_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "events" ADD CONSTRAINT "events_triggered_by_users_id_fk" FOREIGN KEY ("triggered_by") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "events" ADD CONSTRAINT "events_resolved_by_users_id_fk" FOREIGN KEY ("resolved_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "executions" ADD CONSTRAINT "executions_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "executions" ADD CONSTRAINT "executions_triggered_by_users_id_fk" FOREIGN KEY ("triggered_by") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "node_executions" ADD CONSTRAINT "node_executions_execution_id_executions_id_fk" FOREIGN KEY ("execution_id") REFERENCES "public"."executions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "node_executions" ADD CONSTRAINT "node_executions_node_id_workflow_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."workflow_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "accounts_user_id_idx" ON "accounts" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "sessions_token_idx" ON "sessions" USING btree ("token");--> statement-breakpoint
 CREATE INDEX "sessions_user_id_idx" ON "sessions" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "users_email_idx" ON "users" USING btree ("email");--> statement-breakpoint
 CREATE INDEX "verifications_identifier_idx" ON "verifications" USING btree ("identifier");--> statement-breakpoint
-CREATE INDEX "workflow_recipients_workflow_id_idx" ON "workflow_recipients" USING btree ("workflow_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "workflow_recipients_unique_idx" ON "workflow_recipients" USING btree ("workflow_id","channel","recipient");--> statement-breakpoint
+CREATE INDEX "workflow_connections_workflow_id_idx" ON "workflow_connections" USING btree ("workflow_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "workflow_connections_unique_idx" ON "workflow_connections" USING btree ("from_node_id","to_node_id","from_output","to_input");--> statement-breakpoint
+CREATE INDEX "workflow_nodes_workflow_id_idx" ON "workflow_nodes" USING btree ("workflow_id");--> statement-breakpoint
+CREATE INDEX "workflow_nodes_type_idx" ON "workflow_nodes" USING btree ("type");--> statement-breakpoint
 CREATE INDEX "workflows_created_by_idx" ON "workflows" USING btree ("created_by");--> statement-breakpoint
 CREATE INDEX "workflows_is_active_idx" ON "workflows" USING btree ("is_active");--> statement-breakpoint
 CREATE INDEX "event_comments_event_id_idx" ON "event_comments" USING btree ("event_id");--> statement-breakpoint
@@ -115,4 +159,10 @@ CREATE INDEX "event_comments_author_id_idx" ON "event_comments" USING btree ("au
 CREATE INDEX "events_workflow_id_idx" ON "events" USING btree ("workflow_id");--> statement-breakpoint
 CREATE INDEX "events_status_idx" ON "events" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "events_triggered_by_idx" ON "events" USING btree ("triggered_by");--> statement-breakpoint
-CREATE UNIQUE INDEX "events_one_open_per_workflow_idx" ON "events" USING btree ("workflow_id") WHERE "events"."status" = 'open';
+CREATE UNIQUE INDEX "events_one_open_per_workflow_idx" ON "events" USING btree ("workflow_id") WHERE "events"."status" = 'open';--> statement-breakpoint
+CREATE INDEX "executions_workflow_id_idx" ON "executions" USING btree ("workflow_id");--> statement-breakpoint
+CREATE INDEX "executions_status_idx" ON "executions" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "executions_triggered_by_idx" ON "executions" USING btree ("triggered_by");--> statement-breakpoint
+CREATE INDEX "node_executions_execution_id_idx" ON "node_executions" USING btree ("execution_id");--> statement-breakpoint
+CREATE INDEX "node_executions_node_id_idx" ON "node_executions" USING btree ("node_id");--> statement-breakpoint
+CREATE INDEX "node_executions_status_idx" ON "node_executions" USING btree ("status");

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { create } from 'zustand';
 
 export type WorkflowDialogType =
   | 'edit-trigger'
@@ -30,68 +30,23 @@ type WorkflowDialogPayload =
   | { type: 'delete-recipient'; data: WorkflowDialogData['delete-recipient'] };
 
 interface WorkflowDialogState {
+  // Modal dialogs
   dialog: WorkflowDialogPayload | null;
   isOpen: boolean;
   openDialog: (dialog: WorkflowDialogPayload) => void;
   closeDialog: () => void;
+
+  // Node Panel Sheet
+  isNodePanelOpen: boolean;
+  setNodePanelOpen: (isOpen: boolean) => void;
 }
 
-type Listener = () => void;
-
-const listeners = new Set<Listener>();
-
-const storeState: WorkflowDialogState = {
+export const useWorkflowDialogStore = create<WorkflowDialogState>((set) => ({
   dialog: null,
   isOpen: false,
-  openDialog: (dialog) => {
-    storeState.dialog = dialog;
-    storeState.isOpen = true;
-    emitChanges();
-  },
-  closeDialog: () => {
-    storeState.dialog = null;
-    storeState.isOpen = false;
-    emitChanges();
-  },
-};
+  openDialog: (dialog) => set({ dialog, isOpen: true }),
+  closeDialog: () => set({ dialog: null, isOpen: false }),
 
-function emitChanges() {
-  for (const listener of listeners) {
-    listener();
-  }
-}
-
-function subscribe(listener: Listener) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-function getSnapshot(): WorkflowDialogState {
-  return storeState;
-}
-
-export function useWorkflowDialogStore(): WorkflowDialogState;
-export function useWorkflowDialogStore<T>(
-  selector: (state: WorkflowDialogState) => T,
-): T;
-export function useWorkflowDialogStore<T>(
-  selector?: (state: WorkflowDialogState) => T,
-): T | WorkflowDialogState {
-  const getSelectedSnapshot = () => {
-    const snapshot = getSnapshot();
-
-    if (!selector) {
-      return snapshot as T;
-    }
-
-    return selector(snapshot);
-  };
-
-  return useSyncExternalStore(
-    subscribe,
-    getSelectedSnapshot,
-    getSelectedSnapshot,
-  );
-}
+  isNodePanelOpen: false,
+  setNodePanelOpen: (isOpen) => set({ isNodePanelOpen: isOpen }),
+}));

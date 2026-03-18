@@ -28,6 +28,7 @@ export function BaseNode({ className, ...props }: ComponentProps<'div'>) {
  */
 export function BaseNodeHeader({
   className,
+  children,
   ...props
 }: ComponentProps<'header'>) {
   return (
@@ -35,11 +36,11 @@ export function BaseNodeHeader({
       {...props}
       className={cn(
         'mx-0 my-0 -mb-1 flex flex-row items-center justify-between gap-2 px-3 py-2',
-        // Remove or modify these classes if you modify the padding in the
-        // `<BaseNode />` component.
         className,
       )}
-    />
+    >
+      {children}
+    </header>
   );
 }
 
