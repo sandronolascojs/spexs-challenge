@@ -15,6 +15,10 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch"
   },
+  "dependencies": {
+    "zod": "catalog:",
+    "drizzle-orm": "catalog:"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

@@ -1,23 +1,17 @@
-'use client';
-
-import dynamic from 'next/dynamic';
-
+import { AppSidebar } from '@/components/app-sidebar';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
-
-const AppSidebar = dynamic(
-  () => import('@/components/app-sidebar').then((m) => m.AppSidebar),
-  {
-    ssr: false,
-  },
-);
 
 export default function DashboardLayout({
   children,
-}: { children: React.ReactNode }) {
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <SidebarProvider>
+    <SidebarProvider className="h-screen min-h-screen overflow-hidden">
       <AppSidebar />
-      <SidebarInset>{children}</SidebarInset>
+      <SidebarInset className="h-screen max-h-screen overflow-hidden">
+        {children}
+      </SidebarInset>
     </SidebarProvider>
   );
 }

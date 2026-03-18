@@ -1,0 +1,1 @@
+ALTER TABLE "workflows" ADD COLUMN "canvas_state" jsonb NOT NULL;

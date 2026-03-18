@@ -15,3 +15,9 @@ export enum NotificationChannel {
   IN_APP = 'in_app',
   EMAIL = 'email',
 }
+
+export enum WorkflowCanvasNodeKind {
+  TRIGGER = 'trigger',
+  MESSAGE = 'message',
+  RECIPIENT = 'recipient',
+}

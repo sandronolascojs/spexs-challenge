@@ -8,6 +8,13 @@
       "when": 1773758687769,
       "tag": "0000_cynical_satana",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1773797545168,
+      "tag": "0001_burly_rockslide",
+      "breakpoints": true
     }
   ]
 }

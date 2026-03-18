@@ -1,9 +1,11 @@
+import type { WorkflowCanvasState } from '@spexs/types';
 import { relations } from 'drizzle-orm';
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import {
   boolean,
   doublePrecision,
   index,
+  jsonb,
   pgTable,
   text,
 } from 'drizzle-orm/pg-core';
@@ -36,6 +38,7 @@ export const workflows = pgTable(
 
     messageTemplate: text('message_template').notNull(),
     isActive: boolean('is_active').notNull().default(true),
+    canvasState: jsonb('canvas_state').$type<WorkflowCanvasState>().notNull(),
 
     createdBy: referenceId('created_by')
       .notNull()

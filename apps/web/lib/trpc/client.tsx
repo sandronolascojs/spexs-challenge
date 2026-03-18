@@ -33,7 +33,17 @@ export function TRPCReactProvider({ children }: { children: React.ReactNode }) {
 
   const [trpcClient] = useState(() =>
     createTRPCClient<AppRouter>({
-      links: [httpBatchLink({ url: getApiUrl(), transformer: SuperJSON })],
+      links: [
+        httpBatchLink({
+          url: getApiUrl(),
+          transformer: SuperJSON,
+          fetch: (url, options) =>
+            fetch(url, {
+              ...options,
+              credentials: 'include',
+            }),
+        }),
+      ],
     }),
   );
 

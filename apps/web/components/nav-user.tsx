@@ -9,6 +9,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -42,6 +43,11 @@ export function NavUser() {
   const { isMobile } = useSidebar();
   const router = useRouter();
   const { data: session } = useSession();
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   const user = session?.user;
 
@@ -51,7 +57,7 @@ export function NavUser() {
     });
   };
 
-  if (!user) {
+  if (!isHydrated || !user) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>

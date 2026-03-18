@@ -26,6 +26,7 @@
     "@nestjs/platform-express": "catalog:",
     "@spexs/db": "workspace:*",
     "@spexs/types": "workspace:*",
+    "drizzle-orm": "catalog:",
     "@thallesp/nestjs-better-auth": "^2.5.1",
     "@trpc/server": "catalog:",
     "better-auth": "catalog:",
