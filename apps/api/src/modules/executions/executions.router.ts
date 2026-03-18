@@ -1,14 +1,11 @@
-import { executeWorkflowSchema } from '@spexs/types';
-import { z } from 'zod';
+import {
+  executeWorkflowSchema,
+  getExecutionDetailsSchema,
+  getLastExecutionSchema,
+} from '@spexs/types';
 import type { TrpcService } from '../trpc/trpc.service';
 import type { ExecutionsService } from './executions.service';
 
-/**
- * Builds the executions tRPC sub-router.
- *
- * Kept as a plain function (not an Injectable) to avoid circular dependency:
- * ExecutionsModule ← TrpcModule → ExecutionsModule.
- */
 export function buildExecutionsRouter(
   trpc: TrpcService,
   service: ExecutionsService,
@@ -25,11 +22,19 @@ export function buildExecutionsRouter(
       ),
 
     getProgress: trpc.protectedProcedure
-      .input(z.object({ executionId: z.string().min(1) }))
+      .input(getExecutionDetailsSchema)
       .query(({ input }) => service.getProgress(input.executionId)),
 
+    getLastExecution: trpc.protectedProcedure
+      .input(getLastExecutionSchema)
+      .query(({ input }) => service.getLastExecutionStatus(input.workflowId)),
+
+    getDetails: trpc.protectedProcedure
+      .input(getExecutionDetailsSchema)
+      .query(({ input }) => service.getExecutionDetails(input.executionId)),
+
     retry: trpc.protectedProcedure
-      .input(z.object({ executionId: z.string().min(1) }))
+      .input(getExecutionDetailsSchema)
       .mutation(({ input, ctx }) =>
         service.retryExecution(input.executionId, ctx.session.user.id),
       ),

@@ -6,17 +6,14 @@ import {
   type NewNodeExecution,
   alertEvents,
   executions,
+  nodeExecutionComments,
   nodeExecutions,
   workflowConnections,
   workflowNodes,
   workflows,
 } from '@spexs/db';
-import { AlertEventStatus } from '@spexs/types';
-import type {
-  ExecutionStatus,
-  NodeExecutionStatus,
-  SortDirection,
-} from '@spexs/types';
+import { AlertEventStatus, ExecutionStatus } from '@spexs/types';
+import type { NodeExecutionStatus, SortDirection } from '@spexs/types';
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 @Injectable()
@@ -216,7 +213,7 @@ export class ExecutionsRepository {
   /**
    * Update the step logs for an alert event
    */
-  async updateAlertEventStepLogs(eventId: string, stepLogs: any[]) {
+  async updateAlertEventStepLogs(eventId: string, stepLogs: unknown[]) {
     await this.database.db
       .update(alertEvents)
       .set({ stepLogs })
@@ -224,12 +221,139 @@ export class ExecutionsRepository {
   }
 
   /**
-   * Resolve an alert event perfectly.
+   * Resolve an alert event.
    */
   async resolveAlertEvent(eventId: string, status: AlertEventStatus) {
     await this.database.db
       .update(alertEvents)
       .set({ status, resolvedAt: new Date() })
       .where(eq(alertEvents.id, eventId));
+  }
+
+  /**
+   * Find the currently RUNNING execution for a workflow (used to block parallel runs).
+   */
+  async findActiveExecution(workflowId: string) {
+    const [execution] = await this.database.db
+      .select({ id: executions.id, status: executions.status })
+      .from(executions)
+      .where(
+        and(
+          eq(executions.workflowId, workflowId),
+          eq(executions.status, ExecutionStatus.RUNNING),
+        ),
+      )
+      .limit(1);
+
+    return execution || null;
+  }
+
+  /**
+   * Find the most recent execution for a workflow.
+   * Includes per-node outputData keyed by nodeId so the UI can display
+   * real runtime values as variable previews in node edit dialogs.
+   */
+  async findLastExecution(workflowId: string) {
+    const [execution] = await this.database.db
+      .select({
+        id: executions.id,
+        status: executions.status,
+        startedAt: executions.startedAt,
+        completedAt: executions.completedAt,
+      })
+      .from(executions)
+      .where(eq(executions.workflowId, workflowId))
+      .orderBy(desc(executions.startedAt))
+      .limit(1);
+
+    if (!execution) return null;
+
+    const nodeExecs = await this.database.db
+      .select({
+        nodeId: nodeExecutions.nodeId,
+        outputData: nodeExecutions.outputData,
+        status: nodeExecutions.status,
+      })
+      .from(nodeExecutions)
+      .where(eq(nodeExecutions.executionId, execution.id));
+
+    // Map nodeId → outputData for O(1) lookup in the UI
+    const nodeOutputByNodeId = Object.fromEntries(
+      nodeExecs
+        .filter((ne) => ne.outputData !== null)
+        .map((ne) => [ne.nodeId, ne.outputData]),
+    );
+
+    return { ...execution, nodeOutputByNodeId };
+  }
+
+  /**
+   * Find an execution with its node executions and their comments.
+   * Used by the execution details view in the history panel.
+   */
+  async findExecutionWithDetails(executionId: string) {
+    const [execution] = await this.database.db
+      .select()
+      .from(executions)
+      .where(eq(executions.id, executionId))
+      .limit(1);
+
+    if (!execution) return null;
+
+    const nodeExecs = await this.database.db
+      .select()
+      .from(nodeExecutions)
+      .where(eq(nodeExecutions.executionId, executionId))
+      .orderBy(nodeExecutions.createdAt);
+
+    const nodeExecutionIds = nodeExecs.map((ne) => ne.id);
+
+    const comments =
+      nodeExecutionIds.length > 0
+        ? await this.database.db
+            .select()
+            .from(nodeExecutionComments)
+            .where(
+              sql`${nodeExecutionComments.nodeExecutionId} = ANY(ARRAY[${sql.join(
+                nodeExecutionIds.map((id) => sql`${id}::uuid`),
+                sql`, `,
+              )}])`,
+            )
+            .orderBy(nodeExecutionComments.createdAt)
+        : [];
+
+    const commentsByNodeExecutionId = comments.reduce<
+      Record<string, typeof comments>
+    >((accumulator, comment) => {
+      const key = comment.nodeExecutionId;
+      if (!accumulator[key]) {
+        accumulator[key] = [];
+      }
+      accumulator[key].push(comment);
+      return accumulator;
+    }, {});
+
+    const nodeExecutionsWithComments = nodeExecs.map((ne) => ({
+      ...ne,
+      comments: commentsByNodeExecutionId[ne.id] ?? [],
+    }));
+
+    return { ...execution, nodeExecutions: nodeExecutionsWithComments };
+  }
+
+  /**
+   * Add a comment to a specific node execution step.
+   */
+  async addNodeExecutionComment(data: {
+    nodeExecutionId: string;
+    userId: string;
+    content: string;
+  }) {
+    const [created] = await this.database.db
+      .insert(nodeExecutionComments)
+      .values(data)
+      .returning();
+
+    return created;
   }
 }

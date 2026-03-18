@@ -35,6 +35,17 @@ export class ExecutionsService {
     triggerData: Record<string, unknown>,
     userId: string,
   ) {
+    // 0. Block if workflow is already running (no parallel executions)
+    const activeExecution =
+      await this.repository.findActiveExecution(workflowId);
+    if (activeExecution) {
+      throw new TRPCError({
+        code: 'CONFLICT',
+        message:
+          'Workflow is already running. Wait for completion or retry if failed.',
+      });
+    }
+
     // 1. Load the workflow graph
     const graph = await this.repository.loadWorkflowGraph(workflowId);
 
@@ -201,5 +212,20 @@ export class ExecutionsService {
     }
 
     return parsedData;
+  }
+
+  async getLastExecutionStatus(workflowId: string) {
+    return this.repository.findLastExecution(workflowId);
+  }
+
+  async getExecutionDetails(executionId: string) {
+    const details = await this.repository.findExecutionWithDetails(executionId);
+    if (!details) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'Execution not found',
+      });
+    }
+    return details;
   }
 }

@@ -26,5 +26,5 @@ export const recipientInAppExecutor: NodeExecutor = async ({
     },
   };
 
-  return { ...context, ...output };
+  return output;
 };

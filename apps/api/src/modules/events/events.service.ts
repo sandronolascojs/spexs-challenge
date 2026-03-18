@@ -1,14 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import type {
+  AddStepCommentInput,
   ListAlertEventsInput,
   ResolveAlertEventInput,
 } from '@spexs/types';
 import { TRPCError } from '@trpc/server';
+import { ExecutionsRepository } from '../executions/executions.repository';
 import { EventsRepository } from './events.repository';
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly repository: EventsRepository) {}
+  constructor(
+    private readonly repository: EventsRepository,
+    private readonly executionsRepository: ExecutionsRepository,
+  ) {}
 
   async list(input: ListAlertEventsInput) {
     const { workflowId, status, page, pageSize } = input;
@@ -53,5 +58,13 @@ export class EventsService {
     }
 
     return updated;
+  }
+
+  async addStepComment(input: AddStepCommentInput, userId: string) {
+    return this.executionsRepository.addNodeExecutionComment({
+      nodeExecutionId: input.nodeExecutionId,
+      userId,
+      content: input.content,
+    });
   }
 }

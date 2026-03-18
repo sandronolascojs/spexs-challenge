@@ -15,7 +15,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import type { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { useTRPC } from '@/lib/trpc/client';
@@ -41,127 +41,147 @@ interface MessageEditDialogProps {
 type FormValues = z.infer<typeof outputMessageDataSchema>;
 
 interface VariableItem {
+  /** Dot-notation path used in `{{...}}` templates, e.g. `trigger.metricName` */
   key: string;
+  /** Human-readable label shown in the UI */
   label: string;
-  value?: string | number;
-  type: 'string' | 'number';
+  /** Actual runtime value from the last execution (undefined when no run yet) */
+  value?: string;
+  type: 'string' | 'number' | 'boolean' | 'object';
 }
 
 // ── Variable extraction ───────────────────────────────────────────────────────
 
-function buildNodeVariables(
-  nodeType: string | undefined,
-  nodeData: Record<string, unknown> | null,
+/**
+ * Recursively flattens a JSON object into dot-notation paths.
+ * Skips the `triggered` boolean (internal engine flag) and null values.
+ *
+ * Example:
+ *   { trigger: { metricName: "cpu", value: 95 } }
+ *   → [{ key: "trigger.metricName", value: "cpu", type: "string" }, ...]
+ */
+function flattenOutputData(
+  obj: Record<string, unknown>,
+  prefix = '',
+  depth = 0,
 ): VariableItem[] {
-  if (!nodeType && !nodeData) {
-    return [];
-  }
+  const MAX_DEPTH = 4;
+  const items: VariableItem[] = [];
 
-  const variables: VariableItem[] = [];
-  const prefix = nodeType?.startsWith('trigger_') ? 'trigger' : 'input';
+  for (const [rawKey, rawValue] of Object.entries(obj)) {
+    if (rawValue === null || rawValue === undefined) continue;
+    // Skip internal engine flags
+    if (rawKey === 'triggered' || rawKey === 'triggerData') continue;
 
-  if (nodeType?.startsWith('trigger_')) {
-    variables.push({
-      key: `${prefix}.metricName`,
-      label: 'Metric Name',
-      value: nodeData?.metricName as string | undefined,
-      type: 'string',
-    });
-    variables.push({
-      key: `${prefix}.value`,
-      label: 'Current Value',
-      type: 'number',
-    });
+    const dotKey = prefix ? `${prefix}.${rawKey}` : rawKey;
+    const label = dotKey;
 
-    if (nodeData?.operator !== undefined) {
-      variables.push({
-        key: `${prefix}.operator`,
-        label: 'Operator',
-        value: nodeData.operator as string | undefined,
-        type: 'string',
-      });
-    }
-
-    if (nodeData?.thresholdValue !== undefined) {
-      variables.push({
-        key: `${prefix}.threshold`,
-        label: 'Threshold',
-        value: nodeData.thresholdValue as number | undefined,
+    if (typeof rawValue === 'string') {
+      items.push({ key: dotKey, label, value: rawValue, type: 'string' });
+    } else if (typeof rawValue === 'number') {
+      items.push({
+        key: dotKey,
+        label,
+        value: String(rawValue),
         type: 'number',
       });
-    }
-
-    if (nodeData?.baseValue !== undefined) {
-      variables.push({
-        key: `${prefix}.baseValue`,
-        label: 'Base Value',
-        value: nodeData.baseValue as number | undefined,
-        type: 'number',
+    } else if (typeof rawValue === 'boolean') {
+      items.push({
+        key: dotKey,
+        label,
+        value: String(rawValue),
+        type: 'boolean',
       });
-    }
-
-    if (nodeData?.deviationPercentage !== undefined) {
-      variables.push({
-        key: `${prefix}.deviation`,
-        label: 'Max Deviation',
-        value: nodeData.deviationPercentage as number | undefined,
-        type: 'number',
-      });
-    }
-  } else if (nodeData) {
-    // Generic handling for any other left node data
-    for (const [k, v] of Object.entries(nodeData)) {
-      if (typeof v === 'string') {
-        variables.push({
-          key: `${prefix}.${k}`,
-          label: k,
-          value: v,
-          type: 'string',
-        });
-      } else if (typeof v === 'number') {
-        variables.push({
-          key: `${prefix}.${k}`,
-          label: k,
-          value: v,
-          type: 'number',
-        });
-      } else if (typeof v === 'boolean') {
-        variables.push({
-          key: `${prefix}.${k}`,
-          label: k,
-          value: String(v),
-          type: 'string',
-        });
-      }
+    } else if (typeof rawValue === 'object' && depth < MAX_DEPTH) {
+      // Recurse into nested objects
+      items.push(
+        ...flattenOutputData(
+          rawValue as Record<string, unknown>,
+          dotKey,
+          depth + 1,
+        ),
+      );
     }
   }
 
-  return variables;
+  return items;
 }
 
 // ── Rendering helpers ─────────────────────────────────────────────────────────
 
-/** Resolves `{{variable.key}}` tokens with actual values returning a plain string. */
-function resolveTemplateVariables(
+interface ResolvedSegment {
+  /** Stable key derived from character offset — safe to use as React key. */
+  key: string;
+  text: string;
+  /** True when the value was resolved from config (static preview value). */
+  isResolved: boolean;
+  /** True when the token exists but has no static preview value (runtime-only). */
+  isDynamic: boolean;
+}
+
+/**
+ * Splits a template into segments, resolving known static values and
+ * marking runtime-only tokens so they can be highlighted differently.
+ * Each segment has a stable `key` built from its character offset.
+ */
+function resolveTemplateSegments(
   template: string,
   variableMap: Map<string, string>,
-): string {
-  return template.replace(VARIABLE_TOKEN_PATTERN, (match) => {
-    const key = match.slice(2, -2);
-    return variableMap.get(key) ?? match;
-  });
+): ResolvedSegment[] {
+  const parts = template.split(VARIABLE_TOKEN_PATTERN);
+  const segments: ResolvedSegment[] = [];
+  let offset = 0;
+
+  for (const part of parts) {
+    VARIABLE_TOKEN_PATTERN.lastIndex = 0;
+    if (VARIABLE_TOKEN_PATTERN.test(part)) {
+      const variableKey = part.slice(2, -2);
+      const resolved = variableMap.get(variableKey);
+      if (resolved !== undefined) {
+        segments.push({
+          key: `resolved-${offset}`,
+          text: resolved,
+          isResolved: true,
+          isDynamic: false,
+        });
+      } else {
+        segments.push({
+          key: `dynamic-${offset}`,
+          text: part,
+          isResolved: false,
+          isDynamic: true,
+        });
+      }
+    } else {
+      segments.push({
+        key: `text-${offset}`,
+        text: part,
+        isResolved: false,
+        isDynamic: false,
+      });
+    }
+    offset += part.length;
+  }
+
+  return segments;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function VariableTypeIndicator({ type }: { type: 'string' | 'number' }) {
+function VariableTypeIndicator({
+  type,
+}: {
+  type: 'string' | 'number' | 'boolean' | 'object';
+}) {
   return (
     <span
       className={cn(
         'flex size-5 shrink-0 items-center justify-center rounded text-[10px] font-bold',
         type === 'string'
           ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-          : 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+          : type === 'number'
+            ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
+            : 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
       )}
     >
       {type === 'string' ? (
@@ -183,36 +203,46 @@ function InputVariableRow({
   onCopy: (key: string) => void;
 }) {
   return (
-    <button
-      type="button"
+    <div
+      className="group flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer"
       onClick={() => onInsert(variable.key)}
-      className="group flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-muted"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onInsert(variable.key);
+      }}
     >
       <VariableTypeIndicator type={variable.type} />
 
       <div className="flex-1 overflow-hidden">
         <span className="block truncate font-mono text-xs font-medium text-foreground">
-          {variable.label}
+          {variable.key}
         </span>
-        {variable.value !== undefined && (
+        {variable.value !== undefined ? (
           <span className="block truncate text-xs text-muted-foreground">
-            {String(variable.value)}
+            {variable.value}
+          </span>
+        ) : (
+          <span className="block truncate text-xs text-muted-foreground/50 italic">
+            runtime value
           </span>
         )}
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+      <span
+        className="flex size-6 shrink-0 items-center justify-center rounded-md opacity-0 transition-opacity hover:bg-muted-foreground/10 group-hover:opacity-100"
         onClick={(e) => {
           e.stopPropagation();
           onCopy(variable.key);
         }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.stopPropagation();
+            onCopy(variable.key);
+          }
+        }}
       >
         <Copy className="size-3" />
-      </Button>
-    </button>
+      </span>
+    </div>
   );
 }
 
@@ -232,32 +262,50 @@ export function MessageEditDialog({
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
-  const { data: workflow, isLoading } = useQuery(
+  const { data: workflow, isLoading: isWorkflowLoading } = useQuery(
     trpc.workflows.getById.queryOptions({ id: workflowId }),
+  );
+
+  // Load the last execution so we can show real runtime values in the variable panel
+  const { data: lastExecution } = useQuery(
+    trpc.executions.getLastExecution.queryOptions({ workflowId }),
   );
 
   const messageNode = workflow?.nodes.find(
     (n) => n.type === NodeType.OUTPUT_MESSAGE,
   );
 
+  // Walk connections to find the node wired directly into the message node
   const incomingConnection = workflow?.connections.find(
     (c) => c.toNodeId === messageNode?.id,
   );
-
   const inputNode = workflow?.nodes.find(
     (n) => n.id === incomingConnection?.fromNodeId,
   );
 
-  const inputData = inputNode?.data as Record<string, unknown> | null;
-  const variables = buildNodeVariables(inputNode?.type, inputData);
+  // Prefer real execution output over static config data.
+  // nodeOutputByNodeId maps nodeId → the outputData that executor stored.
+  const nodeOutputByNodeId = lastExecution?.nodeOutputByNodeId ?? {};
+  const inputNodeOutputData = inputNode?.id
+    ? (nodeOutputByNodeId[inputNode.id] as Record<string, unknown> | undefined)
+    : undefined;
 
-  // Build a lookup map for resolving variables in the output preview
+  // Build variable list: if we have real execution output, flatten it (node-agnostic).
+  // Fall back to an empty list if no execution has run yet.
+  const variables: VariableItem[] = inputNodeOutputData
+    ? flattenOutputData(inputNodeOutputData)
+    : [];
+
+  // Build a value map for the output preview (key → resolved string)
   const variableValueMap = new Map<string, string>();
   for (const variable of variables) {
     if (variable.value !== undefined) {
-      variableValueMap.set(variable.key, String(variable.value));
+      variableValueMap.set(variable.key, variable.value);
     }
   }
+
+  const hasLastExecution = !!lastExecution;
+  const hasVariables = variables.length > 0;
 
   // ── Form ──────────────────────────────────────────────────────────────────
 
@@ -336,7 +384,7 @@ export function MessageEditDialog({
 
   // ── Loading state ─────────────────────────────────────────────────────────
 
-  if (isLoading || !messageNode) {
+  if (isWorkflowLoading || !messageNode) {
     return (
       <Dialog open onOpenChange={onClose}>
         <DialogContent className="flex h-40 items-center justify-center">
@@ -350,7 +398,11 @@ export function MessageEditDialog({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="flex h-[85vh] w-[90vw] max-w-[95vw] sm:max-w-[90vw] md:max-w-5xl lg:max-w-6xl xl:max-w-7xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent
+        showCloseButton={false}
+        className="flex h-[85vh] w-[90vw] max-w-[95vw] sm:max-w-[90vw] md:max-w-5xl lg:max-w-6xl xl:max-w-7xl flex-col gap-0 overflow-hidden p-0"
+      >
+        <DialogTitle className="sr-only">Edit {messageNode.name}</DialogTitle>
         {/* ─── Top bar ──────────────────────────────────────────────────────── */}
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background px-4">
           <div className="flex items-center gap-3">
@@ -409,6 +461,11 @@ export function MessageEditDialog({
                   {inputNode?.name ?? 'No input connected'}
                 </span>
               </div>
+              {hasLastExecution && (
+                <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  Last run
+                </span>
+              )}
             </div>
 
             {/* View tabs */}
@@ -430,25 +487,55 @@ export function MessageEditDialog({
               ))}
             </div>
 
-            {/* Item count */}
+            {/* Item count / status */}
             <div className="border-t border-border px-4 py-2">
-              <span className="text-xs text-muted-foreground">
-                {variables.length} {variables.length === 1 ? 'item' : 'items'}
-              </span>
+              {hasVariables ? (
+                <span className="text-xs text-muted-foreground">
+                  {variables.length} {variables.length === 1 ? 'item' : 'items'}
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground/60 italic">
+                  {!inputNode
+                    ? 'No node connected'
+                    : !hasLastExecution
+                      ? 'Run workflow to see values'
+                      : 'No output from last run'}
+                </span>
+              )}
             </div>
 
-            {/* Variable list */}
+            {/* Variable list / JSON view */}
             <ScrollArea className="flex-1">
-              <div className="space-y-0.5 px-2 pb-4">
-                {variables.map((variable) => (
-                  <InputVariableRow
-                    key={variable.key}
-                    variable={variable}
-                    onInsert={insertVariable}
-                    onCopy={copyVariable}
-                  />
-                ))}
-              </div>
+              {activeInputView === 'JSON' ? (
+                <div className="px-3 pb-4">
+                  <pre className="rounded-md bg-muted/50 p-3 text-[11px] leading-relaxed text-muted-foreground overflow-auto max-h-[60vh]">
+                    {inputNodeOutputData
+                      ? JSON.stringify(inputNodeOutputData, null, 2)
+                      : '// No execution data yet.\n// Trigger the workflow to populate output.'}
+                  </pre>
+                </div>
+              ) : (
+                <div className="space-y-0.5 px-2 pb-4">
+                  {hasVariables ? (
+                    variables.map((variable) => (
+                      <InputVariableRow
+                        key={variable.key}
+                        variable={variable}
+                        onInsert={insertVariable}
+                        onCopy={copyVariable}
+                      />
+                    ))
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                      <p className="text-xs text-muted-foreground/60">
+                        {!inputNode
+                          ? 'Connect a node to use its output as variables.'
+                          : 'Trigger the workflow once to load available variables.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </ScrollArea>
           </aside>
 
@@ -495,22 +582,28 @@ export function MessageEditDialog({
                               {'{{trigger.value}}'}
                             </span>
                           ) : (
-                            templateValue
-                              .split(VARIABLE_TOKEN_PATTERN)
-                              .map((segment) => {
+                            (() => {
+                              const parts = templateValue.split(
+                                VARIABLE_TOKEN_PATTERN,
+                              );
+                              let charOffset = 0;
+                              return parts.map((segment) => {
+                                const key = `bg-${charOffset}`;
+                                charOffset += segment.length;
                                 VARIABLE_TOKEN_PATTERN.lastIndex = 0;
                                 if (VARIABLE_TOKEN_PATTERN.test(segment)) {
                                   return (
-                                    <span
-                                      key={segment}
-                                      className="rounded bg-primary/20 px-1 font-semibold text-primary"
+                                    <mark
+                                      key={key}
+                                      className="bg-primary/20 text-primary"
                                     >
                                       {segment}
-                                    </span>
+                                    </mark>
                                   );
                                 }
-                                return <span key={segment}>{segment}</span>;
-                              })
+                                return <span key={key}>{segment}</span>;
+                              });
+                            })()
                           )}
                           {/* Empty spacing suffix to allow scrolling past final newline */}
                           {templateValue.endsWith('\n') ? <br /> : null}
@@ -565,11 +658,37 @@ export function MessageEditDialog({
                         Live
                       </span>
                     </div>
-                    <p className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-muted-foreground">
-                      {resolveTemplateVariables(
+                    <p className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
+                      {resolveTemplateSegments(
                         templateValue,
                         variableValueMap,
-                      )}
+                      ).map((segment) => {
+                        if (segment.isDynamic) {
+                          return (
+                            <span
+                              key={segment.key}
+                              className="rounded bg-primary/20 px-1 font-semibold text-primary"
+                            >
+                              {segment.text}
+                            </span>
+                          );
+                        }
+                        if (segment.isResolved) {
+                          return (
+                            <span
+                              key={segment.key}
+                              className="rounded bg-emerald-500/15 px-0.5 text-emerald-700 dark:text-emerald-400"
+                            >
+                              {segment.text}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span key={segment.key} className="text-foreground">
+                            {segment.text}
+                          </span>
+                        );
+                      })}
                     </p>
                   </div>
                 ) : (

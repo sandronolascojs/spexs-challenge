@@ -4,12 +4,9 @@ import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { index, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { users } from '../auth/users';
 import { alertEventStatusEnum } from '../enums';
+import { executions } from '../executions/executions';
 import { createdAtColumn, primaryKeyId, referenceId } from '../utils';
 import { workflows } from '../workflows/workflows';
-
-// ---------------------------------------------------------------------------
-// Table: alert_events
-// ---------------------------------------------------------------------------
 
 export const alertEvents = pgTable(
   'alert_events',
@@ -23,18 +20,18 @@ export const alertEvents = pgTable(
       .default(AlertEventStatus.OPEN),
     triggerData: jsonb('trigger_data').notNull().default({}),
     stepLogs: jsonb('step_logs').notNull().default([]),
+    executionId: referenceId('execution_id').references(() => executions.id, {
+      onDelete: 'set null',
+    }),
     createdAt: createdAtColumn(),
     resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
   },
   (t) => [
     index('alert_events_workflow_id_idx').on(t.workflowId),
     index('alert_events_status_idx').on(t.status),
+    index('alert_events_execution_id_idx').on(t.executionId),
   ],
 );
-
-// ---------------------------------------------------------------------------
-// Table: event_comments
-// ---------------------------------------------------------------------------
 
 export const eventComments = pgTable(
   'event_comments',
@@ -55,14 +52,14 @@ export const eventComments = pgTable(
   ],
 );
 
-// ---------------------------------------------------------------------------
-// Relations
-// ---------------------------------------------------------------------------
-
 export const alertEventsRelations = relations(alertEvents, ({ one, many }) => ({
   workflow: one(workflows, {
     fields: [alertEvents.workflowId],
     references: [workflows.id],
+  }),
+  execution: one(executions, {
+    fields: [alertEvents.executionId],
+    references: [executions.id],
   }),
   comments: many(eventComments),
 }));
@@ -77,10 +74,6 @@ export const eventCommentsRelations = relations(eventComments, ({ one }) => ({
     references: [users.id],
   }),
 }));
-
-// ---------------------------------------------------------------------------
-// Inferred types
-// ---------------------------------------------------------------------------
 
 export type AlertEvent = InferSelectModel<typeof alertEvents>;
 export type NewAlertEvent = InferInsertModel<typeof alertEvents>;

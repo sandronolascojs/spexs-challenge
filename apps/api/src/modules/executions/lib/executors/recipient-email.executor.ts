@@ -28,5 +28,5 @@ export const recipientEmailExecutor: NodeExecutor = async ({
     },
   };
 
-  return { ...context, ...output };
+  return output;
 };

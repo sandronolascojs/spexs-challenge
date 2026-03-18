@@ -24,5 +24,5 @@ export const outputMessageExecutor: NodeExecutor = async ({
     },
   };
 
-  return { ...context, ...output };
+  return output;
 };

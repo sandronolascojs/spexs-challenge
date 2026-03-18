@@ -12,9 +12,9 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTRPC } from '@/lib/trpc/client';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Play, Zap } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { WorkflowDetail } from '../types/canvas';
 
 interface TriggerDialogProps {
@@ -31,7 +31,24 @@ export function TriggerDialog({
   onTriggerSuccess,
 }: TriggerDialogProps) {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const [metricValue, setMetricValue] = useState('');
+
+  const triggerNode = useMemo(() => {
+    return workflow.nodes.find((n) => n.type.startsWith('trigger_'));
+  }, [workflow.nodes]);
+
+  const metricName = useMemo(() => {
+    const data = triggerNode?.data as Record<string, unknown> | undefined;
+    return (data?.metricName as string) || 'metric';
+  }, [triggerNode]);
+
+  const defaultValue = useMemo(() => {
+    const data = triggerNode?.data as Record<string, unknown> | undefined;
+    return (
+      (data?.thresholdValue as number) ?? (data?.baseValue as number) ?? 100
+    );
+  }, [triggerNode]);
 
   const executeMutation = useMutation(
     trpc.executions.execute.mutationOptions({
@@ -39,6 +56,15 @@ export function TriggerDialog({
         onTriggerSuccess?.(data.executionId);
         onOpenChange(false);
         setMetricValue('');
+        // Invalidate after a short delay so the BullMQ processor
+        // has time to store node outputData for the edit dialog.
+        setTimeout(() => {
+          void queryClient.invalidateQueries(
+            trpc.executions.getLastExecution.queryFilter({
+              workflowId: workflow.id,
+            }),
+          );
+        }, 3000);
       },
     }),
   );
@@ -47,7 +73,7 @@ export function TriggerDialog({
     executeMutation.mutate({
       workflowId: workflow.id,
       triggerData: {
-        value: metricValue ? Number(metricValue) : 0,
+        value: metricValue ? Number(metricValue) : defaultValue,
       },
     });
   }
@@ -71,11 +97,14 @@ export function TriggerDialog({
 
         <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <Label htmlFor="trigger-value">Metric Value</Label>
+            <Label htmlFor="trigger-value">
+              Enter value for{' '}
+              <span className="font-semibold">{metricName}</span>
+            </Label>
             <Input
               id="trigger-value"
               type="number"
-              placeholder="Enter a numeric value"
+              placeholder={`Default: ${defaultValue}`}
               value={metricValue}
               onChange={(event) => setMetricValue(event.target.value)}
             />

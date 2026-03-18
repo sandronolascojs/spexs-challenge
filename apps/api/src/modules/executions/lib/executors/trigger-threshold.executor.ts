@@ -52,5 +52,5 @@ export const triggerThresholdExecutor: NodeExecutor = async ({
     },
   };
 
-  return { ...context, ...output };
+  return output;
 };

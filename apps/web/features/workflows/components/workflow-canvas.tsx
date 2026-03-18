@@ -29,7 +29,7 @@ import {
   TrendingUp,
   Zap,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWorkflowGraph } from '../hooks/use-workflow-graph';
 import { createsCycle } from '../lib/flow-rules';
 import { useWorkflowDialogStore } from '../stores/dialog-store';
@@ -57,7 +57,10 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  // TRPC Polling for execution progress
+  const { data: lastExecution } = useQuery(
+    trpc.executions.getLastExecution.queryOptions({ workflowId: workflow.id }),
+  );
+
   const { data: progressData } = useQuery({
     ...trpc.executions.getProgress.queryOptions({
       executionId: executionId || '',
@@ -82,7 +85,20 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
     void queryClient.invalidateQueries(
       trpc.workflows.getById.queryFilter({ id: workflow.id }),
     );
+    void queryClient.invalidateQueries(
+      trpc.executions.getLastExecution.queryFilter({ workflowId: workflow.id }),
+    );
   }, [queryClient, trpc, workflow.id]);
+
+  // Detect when execution finishes (isExecuting: true → false) and refresh caches
+  const wasExecutingRef = useRef(false);
+  useEffect(() => {
+    if (wasExecutingRef.current && !isExecuting && executionId) {
+      invalidateWorkflow();
+      setExecutionId(null);
+    }
+    wasExecutingRef.current = isExecuting;
+  }, [isExecuting, executionId, invalidateWorkflow]);
 
   const removeNodeMutation = useMutation(
     trpc.workflows.removeNode.mutationOptions({
@@ -222,6 +238,7 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
         </Panel>
         <TriggerWorkflowButton
           workflow={workflow}
+          lastExecution={lastExecution}
           onTriggerSuccess={setExecutionId}
           isExecuting={isExecuting}
         />

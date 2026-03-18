@@ -11,6 +11,6 @@ import { ExecutionsService } from './executions.service';
     }),
   ],
   providers: [ExecutionsRepository, ExecutionsService, ExecutionsProcessor],
-  exports: [ExecutionsService],
+  exports: [ExecutionsService, ExecutionsRepository],
 })
 export class ExecutionsModule {}

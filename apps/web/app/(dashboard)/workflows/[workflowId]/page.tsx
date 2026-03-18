@@ -17,17 +17,23 @@ export default async function WorkflowPage({ params }: PageProps) {
 
   const queryClient = getQueryClient();
 
-  void queryClient.prefetchQuery(
-    trpc.workflows.getById.queryOptions({ id: workflowId }),
-  );
-
-  void queryClient.prefetchQuery(
-    trpc.events.list.queryOptions({
-      workflowId,
-      page: DEFAULT_PAGE,
-      pageSize: DEFAULT_PAGE_SIZE,
-    }),
-  );
+  // Await prefetches so errors are caught server-side and never dehydrated
+  // as pending queries — which would cause client-side rejection errors.
+  await Promise.allSettled([
+    queryClient.prefetchQuery(
+      trpc.workflows.getById.queryOptions({ id: workflowId }),
+    ),
+    queryClient.prefetchQuery(
+      trpc.events.list.queryOptions({
+        workflowId,
+        page: DEFAULT_PAGE,
+        pageSize: DEFAULT_PAGE_SIZE,
+      }),
+    ),
+    queryClient.prefetchQuery(
+      trpc.executions.getLastExecution.queryOptions({ workflowId }),
+    ),
+  ]);
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

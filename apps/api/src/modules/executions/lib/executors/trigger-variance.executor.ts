@@ -32,5 +32,5 @@ export const triggerVarianceExecutor: NodeExecutor = async ({
     },
   };
 
-  return { ...context, ...output };
+  return output;
 };
