@@ -1,11 +1,6 @@
-import type { ComparisonOperator } from '@spexs/types';
+import { ComparisonOperator, triggerThresholdDataSchema } from '@spexs/types';
+import { TRPCError } from '@trpc/server';
 import type { NodeExecutor, WorkflowContext } from '../executor-types';
-
-interface TriggerThresholdNodeData {
-  readonly metricName: string;
-  readonly operator: ComparisonOperator;
-  readonly thresholdValue: number;
-}
 
 function evaluateThreshold(
   value: number,
@@ -16,37 +11,54 @@ function evaluateThreshold(
     ComparisonOperator,
     (v: number, t: number) => boolean
   > = {
-    gt: (v, t) => v > t,
-    lt: (v, t) => v < t,
-    gte: (v, t) => v >= t,
-    lte: (v, t) => v <= t,
-    eq: (v, t) => v === t,
+    [ComparisonOperator.GREATER_THAN]: (v, t) => v > t,
+    [ComparisonOperator.LESS_THAN]: (v, t) => v < t,
+    [ComparisonOperator.GREATER_THAN_OR_EQUAL]: (v, t) => v >= t,
+    [ComparisonOperator.LESS_THAN_OR_EQUAL]: (v, t) => v <= t,
+    [ComparisonOperator.EQUAL]: (v, t) => v === t,
   };
 
   return evaluators[operator](value, threshold);
+}
+
+function extractMetricValue(context: WorkflowContext): number {
+  const triggerData = context.triggerData;
+  if (
+    triggerData !== null &&
+    typeof triggerData === 'object' &&
+    'value' in triggerData
+  ) {
+    const val = triggerData.value;
+    return typeof val === 'number' ? val : 0;
+  }
+  return 0;
 }
 
 export const triggerThresholdExecutor: NodeExecutor = async ({
   node,
   context,
 }) => {
-  const nodeData = node.data as TriggerThresholdNodeData;
-  const triggerData = context.triggerData as
-    | Record<string, unknown>
-    | undefined;
-  const metricValue = (triggerData?.value as number) ?? 0;
+  const parsed = triggerThresholdDataSchema.safeParse(node.data);
+  if (!parsed.success) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `Invalid trigger threshold node data: ${parsed.error.message}`,
+    });
+  }
+
+  const metricValue = extractMetricValue(context);
 
   const triggered = evaluateThreshold(
     metricValue,
-    nodeData.operator,
-    nodeData.thresholdValue,
+    parsed.data.operator,
+    parsed.data.thresholdValue,
   );
 
   const output: WorkflowContext = {
     trigger: {
-      metricName: nodeData.metricName,
-      operator: nodeData.operator,
-      thresholdValue: nodeData.thresholdValue,
+      metricName: parsed.data.metricName,
+      operator: parsed.data.operator,
+      thresholdValue: parsed.data.thresholdValue,
       value: metricValue,
       triggered,
     },

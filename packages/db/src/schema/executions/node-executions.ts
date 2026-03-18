@@ -24,8 +24,8 @@ export const nodeExecutions = pgTable(
     status: nodeExecutionStatusEnum('status')
       .notNull()
       .default(NodeExecutionStatus.PENDING),
-    inputData: jsonb('input_data'),
-    outputData: jsonb('output_data'),
+    inputData: jsonb('input_data').$type<Record<string, unknown>>(),
+    outputData: jsonb('output_data').$type<Record<string, unknown>>(),
     error: text('error'),
     startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }),
     completedAt: timestamp('completed_at', {

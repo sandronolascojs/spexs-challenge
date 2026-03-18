@@ -1,4 +1,4 @@
-import type { NodeExecutionStatus } from '@spexs/types';
+import type { NodeExecutionStatus, NodeProgressMap } from '@spexs/types';
 import type { Edge } from '@xyflow/react';
 import { useMemo } from 'react';
 import type {
@@ -16,8 +16,8 @@ const INACTIVE_EDGE_STYLE = {
 } as const;
 
 /**
- * Map node type to React Flow node type string for the `nodeTypes` registry.
- * All nodes use the generic 'workflow' node type.
+ * Maps a DB node type string to the React Flow `nodeTypes` registry key.
+ * Trigger variants → 'trigger', output_ → 'message', recipient_ → 'recipient'.
  */
 function toReactFlowNodeType(nodeType: string): string {
   if (nodeType.startsWith('trigger_')) return 'trigger';
@@ -32,17 +32,15 @@ function nodeRowToCanvasNode(
   isActive: boolean,
   executionStatus?: NodeExecutionStatus,
 ): WorkflowCanvasNode {
-  const position = nodeRow.position as { x: number; y: number };
-
   return {
     id: nodeRow.id,
     type: toReactFlowNodeType(nodeRow.type),
-    position: { x: position.x, y: position.y },
+    position: { x: nodeRow.position.x, y: nodeRow.position.y },
     data: {
       nodeId: nodeRow.id,
       nodeType: nodeRow.type,
       label: nodeRow.name,
-      nodeData: (nodeRow.data ?? {}) as Record<string, unknown>,
+      nodeData: nodeRow.data ?? {},
       workflowId,
       isActive,
       executionStatus,
@@ -74,17 +72,16 @@ function connectionRowToEdge(
  */
 export function useWorkflowGraph(
   workflow: WorkflowDetail,
-  nodeStatuses?: Record<string, any>,
+  nodeStatuses?: NodeProgressMap,
 ) {
   return useMemo(() => {
     const nodes = workflow.nodes.map((nodeRow) => {
-      const statusData = nodeStatuses?.[nodeRow.id];
-      const status = statusData ? statusData.status : undefined;
+      const progressEntry = nodeStatuses?.[nodeRow.id];
       return nodeRowToCanvasNode(
         nodeRow,
         workflow.id,
         workflow.isActive,
-        status,
+        progressEntry?.status,
       );
     });
 

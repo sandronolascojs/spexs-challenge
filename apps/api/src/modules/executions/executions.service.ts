@@ -1,6 +1,11 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { ExecutionStatus, NodeExecutionStatus } from '@spexs/types';
+import {
+  ExecutionStatus,
+  NodeExecutionStatus,
+  type NodeProgressMap,
+  nodeProgressEntrySchema,
+} from '@spexs/types';
 import { TRPCError } from '@trpc/server';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
@@ -192,7 +197,7 @@ export class ExecutionsService {
   /**
    * Reads the active execution states from Redis hash cache
    */
-  async getProgress(executionId: string) {
+  async getProgress(executionId: string): Promise<NodeProgressMap> {
     const cacheKey = `execution-progress:${executionId}`;
     const rawData = await this.redisClient.hgetall(cacheKey);
 
@@ -202,12 +207,17 @@ export class ExecutionsService {
     }
 
     // Parse out the stringified JSON rows per node
-    const parsedData: Record<string, any> = {};
+    const parsedData: NodeProgressMap = {};
     for (const [nodeId, payloadString] of Object.entries(rawData)) {
       try {
-        parsedData[nodeId] = JSON.parse(payloadString);
+        const parsed = nodeProgressEntrySchema.safeParse(
+          JSON.parse(payloadString),
+        );
+        if (parsed.success) {
+          parsedData[nodeId] = parsed.data;
+        }
       } catch {
-        // Fallback or ignore broken parsing safely
+        // Ignore malformed JSON entries
       }
     }
 

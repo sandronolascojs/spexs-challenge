@@ -1,21 +1,29 @@
-import type { WorkflowNode } from '@spexs/db';
+import type { ExecutorNode, WorkflowContext } from '@spexs/types';
+import type { EmailService } from '../../email/email.service';
+
+// Re-export pure domain types so existing importers don't break
+export type { ExecutorNode, WorkflowContext } from '@spexs/types';
 
 /**
- * Context that flows through the execution graph.
- * Each executor merges its output into the context for downstream nodes.
+ * Injectable services available to executors at runtime.
+ * Passed from the processor so executors stay testable (no direct DI).
  */
-export type WorkflowContext = Record<string, unknown>;
+export interface ExecutorServices {
+  readonly email: EmailService;
+}
 
 /**
  * Input provided to each node executor.
  */
 export interface NodeExecutorInput {
-  /** The database node row (type, data, id) */
-  readonly node: WorkflowNode;
+  /** Lean node data (id, type, workflowId, data) */
+  readonly node: ExecutorNode;
   /** Accumulated context from all upstream nodes */
   readonly context: WorkflowContext;
   /** ID of the user who triggered the execution */
   readonly userId: string;
+  /** Injectable services (email, etc.) */
+  readonly services: ExecutorServices;
 }
 
 /**

@@ -35,6 +35,7 @@
     "handlebars": "^4.7.8",
     "ioredis": "^5.10.0",
     "reflect-metadata": "catalog:",
+    "resend": "^6.9.4",
     "rxjs": "catalog:",
     "superjson": "catalog:",
     "toposort": "^2.0.2",

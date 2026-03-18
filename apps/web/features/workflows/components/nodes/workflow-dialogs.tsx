@@ -1,9 +1,9 @@
 'use client';
 
-import { useWorkflowDialogStore } from '../../../stores/dialog-store';
-import { MessageEditDialog } from './message-edit-dialog';
-import { RecipientEditDialog } from './recipient-edit-dialog';
-import { TriggerEditDialog } from './trigger-edit-dialog';
+import { useWorkflowDialogStore } from '../../stores/dialog-store';
+import { MessageEditDialog } from './message/message-edit-dialog';
+import { RecipientEditDialog } from './recipient/recipient-edit-dialog';
+import { TriggerEditDialog } from './trigger/trigger-edit-dialog';
 
 export function WorkflowDialogs() {
   const { dialog, isOpen, closeDialog } = useWorkflowDialogStore();

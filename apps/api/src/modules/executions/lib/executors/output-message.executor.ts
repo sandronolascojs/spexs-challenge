@@ -1,9 +1,7 @@
+import { outputMessageDataSchema } from '@spexs/types';
+import { TRPCError } from '@trpc/server';
 import Handlebars from 'handlebars';
 import type { NodeExecutor, WorkflowContext } from '../executor-types';
-
-interface OutputMessageNodeData {
-  readonly template: string;
-}
 
 /**
  * Interpolates the message template using Handlebars with the execution context.
@@ -13,14 +11,21 @@ export const outputMessageExecutor: NodeExecutor = async ({
   node,
   context,
 }) => {
-  const nodeData = node.data as OutputMessageNodeData;
-  const compiledTemplate = Handlebars.compile(nodeData.template);
+  const parsed = outputMessageDataSchema.safeParse(node.data);
+  if (!parsed.success) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `Invalid output message node data: ${parsed.error.message}`,
+    });
+  }
+
+  const compiledTemplate = Handlebars.compile(parsed.data.template);
   const renderedMessage = compiledTemplate(context);
 
   const output: WorkflowContext = {
     message: {
       text: renderedMessage,
-      template: nodeData.template,
+      template: parsed.data.template,
     },
   };
 

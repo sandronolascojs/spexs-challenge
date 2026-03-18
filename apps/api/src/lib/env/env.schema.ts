@@ -30,6 +30,19 @@ export const EnvSchema = z.object({
   // ---------------------------------------------------------------------------
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.coerce.number().int().positive().default(6379),
+
+  // ---------------------------------------------------------------------------
+  // Email (Resend)
+  // SEND_EMAILS: when false, emails are logged to console instead of sent
+  // RESEND_API_KEY: required when SEND_EMAILS is true
+  // FROM_EMAIL: sender address (must be verified in Resend)
+  // ---------------------------------------------------------------------------
+  SEND_EMAILS: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  RESEND_API_KEY: z.string().optional(),
+  FROM_EMAIL: z.email().default('onboarding@resend.dev'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

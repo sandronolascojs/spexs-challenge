@@ -1,30 +1,46 @@
-import type { NodeExecutor, WorkflowContext } from '../executor-types';
-
-interface RecipientEmailNodeData {
-  readonly email: string;
-}
+import { type WorkflowContext, recipientEmailDataSchema } from '@spexs/types';
+import { TRPCError } from '@trpc/server';
+import type { NodeExecutor } from '../executor-types';
 
 /**
- * Sends the message to an email recipient.
- * Currently logs the action — replace with actual email service integration.
+ * Sends the message to all configured email recipients.
+ * When SEND_EMAILS is enabled, sends via Resend; otherwise logs to console.
  */
 export const recipientEmailExecutor: NodeExecutor = async ({
   node,
   context,
+  services,
 }) => {
-  const nodeData = node.data as RecipientEmailNodeData;
-  const messageData = context.message as { text: string } | undefined;
-  const messageText = messageData?.text ?? '';
+  const parsed = recipientEmailDataSchema.safeParse(node.data);
+  if (!parsed.success) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `Invalid recipient email node data: ${parsed.error.message}`,
+    });
+  }
 
-  // TODO: integrate with actual email service
-  console.log(`[RecipientEmail] Sending to ${nodeData.email}: ${messageText}`);
+  const messageEntry = context.message;
+  const messageText =
+    messageEntry && typeof messageEntry === 'object' && 'text' in messageEntry
+      ? String(messageEntry.text)
+      : '';
+
+  const subject = 'Workflow Alert Notification';
+  const htmlBody = `<p>${messageText}</p>`;
+
+  const result = await services.email.send({
+    to: parsed.data.emails,
+    subject,
+    html: htmlBody,
+  });
 
   const output: WorkflowContext = {
     notification: {
-      sent: true,
+      sent: result.sent,
       channel: 'email',
-      to: nodeData.email,
+      to: parsed.data.emails,
       message: messageText,
+      messageId: result.messageId,
     },
   };
 

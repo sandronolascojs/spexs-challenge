@@ -9,26 +9,29 @@ import {
   BaseNodeHeaderTitle,
 } from '@/components/ui/react-flow/base-node';
 import { NodeStatusIndicator } from '@/components/ui/react-flow/node-status-indicator';
-import { cn } from '@/lib/utils';
 import { NodeType } from '@spexs/types';
-import { Position } from '@xyflow/react';
-import { useReactFlow } from '@xyflow/react';
+import { Position, useReactFlow } from '@xyflow/react';
 import { Bell, Mail, Pencil, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { mapExecutionStatusToIndicator } from '../../lib/node-status';
-import { useWorkflowDialogStore } from '../../stores/dialog-store';
-import type { WorkflowNodeData } from '../../types/canvas';
+import { mapExecutionStatusToIndicator } from '../../../lib/node-status';
+import { useWorkflowDialogStore } from '../../../stores/dialog-store';
+import type { WorkflowNodeData } from '../../../types/canvas';
+import { NODE_CARD_CLASS } from '../shared/node-card-styles';
+import {
+  parseRecipientEmailData,
+  parseRecipientInAppData,
+} from '../shared/parse-node-data';
 
-type Props = { data: WorkflowNodeData };
+// ── Channel visual configuration ──────────────────────────────────────────────
 
-type ChannelConfig = {
+interface ChannelVisualConfig {
   label: string;
   Icon: LucideIcon;
   iconClass: string;
   titleClass: string;
-};
+}
 
-const CHANNEL_CONFIG: Record<string, ChannelConfig> = {
+const CHANNEL_CONFIG: Record<string, ChannelVisualConfig> = {
   [NodeType.RECIPIENT_EMAIL]: {
     label: 'Email Notification',
     Icon: Mail,
@@ -43,34 +46,45 @@ const CHANNEL_CONFIG: Record<string, ChannelConfig> = {
   },
 };
 
-const FALLBACK_CONFIG: ChannelConfig = {
+const FALLBACK_CHANNEL_CONFIG: ChannelVisualConfig = {
   label: 'Notification',
   Icon: Bell,
   iconClass: 'bg-muted',
   titleClass: 'text-muted-foreground',
 };
 
-export function RecipientNode({ data }: Props) {
-  const config = CHANNEL_CONFIG[data.nodeType] ?? FALLBACK_CONFIG;
-  const email = data.nodeData.email as string | undefined;
-  const userId = data.nodeData.userId as string | undefined;
+// ── Component ─────────────────────────────────────────────────────────────────
+
+interface RecipientNodeProps {
+  data: WorkflowNodeData;
+}
+
+function getRecipientDescription(data: WorkflowNodeData): string {
+  const isEmail = data.nodeType === NodeType.RECIPIENT_EMAIL;
+
+  if (isEmail) {
+    const parsed = parseRecipientEmailData(data.nodeData);
+    if (!parsed?.emails.length) return '\u2014';
+    if (parsed.emails.length === 1) return parsed.emails[0];
+    return `${parsed.emails[0]} +${parsed.emails.length - 1}`;
+  }
+
+  const parsed = parseRecipientInAppData(data.nodeData);
+  return parsed?.userId ?? 'Current user';
+}
+
+export function RecipientNode({ data }: RecipientNodeProps) {
+  const config = CHANNEL_CONFIG[data.nodeType] ?? FALLBACK_CHANNEL_CONFIG;
   const isEmail = data.nodeType === NodeType.RECIPIENT_EMAIL;
   const statusProp = mapExecutionStatusToIndicator(data.executionStatus);
+  const description = getRecipientDescription(data);
 
   const { openDialog } = useWorkflowDialogStore();
   const { deleteElements } = useReactFlow();
 
   return (
     <NodeStatusIndicator status={statusProp}>
-      <BaseNode
-        data-tour="workflow-recipient-node"
-        className={cn(
-          'w-80 bg-card',
-          'border border-border/50',
-          '[box-shadow:0_0_0_1px_rgba(0,0,0,.02),0_1px_2px_rgba(0,0,0,.03)]',
-          'dark:[box-shadow:0_-10px_40px_-10px_#ffffff08_inset] dark:[border:1px_solid_rgba(255,255,255,.08)]',
-        )}
-      >
+      <BaseNode data-tour="workflow-recipient-node" className={NODE_CARD_CLASS}>
         <BaseHandle type="target" position={Position.Top} />
 
         <BaseNodeHeader>
@@ -120,9 +134,7 @@ export function RecipientNode({ data }: Props) {
             <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               {isEmail ? 'Email' : 'User'}
             </p>
-            <p className="truncate font-mono text-sm">
-              {isEmail ? (email ?? '—') : (userId ?? 'Current user')}
-            </p>
+            <p className="truncate font-mono text-sm">{description}</p>
           </div>
         </BaseNodeContent>
       </BaseNode>

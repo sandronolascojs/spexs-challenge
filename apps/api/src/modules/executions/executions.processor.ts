@@ -3,29 +3,66 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   AlertEventStatus,
   ExecutionStatus,
+  type ExecutorNode,
   NodeExecutionStatus,
+  type WorkflowContext,
 } from '@spexs/types';
-import type { NodeType } from '@spexs/types';
 import { Job } from 'bullmq';
 import Redis from 'ioredis';
 import { EnvService } from '../../lib/env/env.service';
+import { EmailService } from '../email/email.service';
 import { ExecutionsRepository } from './executions.repository';
 import { getNodeExecutor } from './lib/executor-registry';
-import type { WorkflowContext } from './lib/executor-types';
+import type { ExecutorServices } from './lib/executor-types';
 
-interface NodeExecutionReference {
-  id: string; // the workflowNodes row object without full typing just id/type/workflowId
-  type: NodeType;
-  workflowId: string;
-  data: unknown;
-}
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ExecutionJobData {
   executionId: string;
-  sortedNodes: NodeExecutionReference[];
+  sortedNodes: ExecutorNode[];
   nodeExecutionIdByNodeId: Record<string, string>;
   triggerData: Record<string, unknown>;
   userId: string;
+}
+
+interface StepLog {
+  nodeId: string;
+  nodeType: string;
+  status: NodeExecutionStatus;
+  completedAt: Date;
+  output?: WorkflowContext;
+  error?: string;
+}
+
+/** Shape returned by trigger executors (threshold + variance). */
+interface TriggerOutput {
+  triggered: boolean;
+  value: number;
+  thresholdValue?: number;
+  baseValue?: number;
+}
+
+/** Safely narrows `context.trigger` to a typed object, or null. */
+function parseTriggerOutput(trigger: unknown): TriggerOutput | null {
+  if (
+    trigger !== null &&
+    typeof trigger === 'object' &&
+    'triggered' in trigger &&
+    typeof (trigger as Record<string, unknown>).triggered === 'boolean'
+  ) {
+    const record = trigger as Record<string, unknown>;
+    return {
+      triggered: Boolean(record.triggered),
+      value: typeof record.value === 'number' ? record.value : 0,
+      thresholdValue:
+        typeof record.thresholdValue === 'number'
+          ? record.thresholdValue
+          : undefined,
+      baseValue:
+        typeof record.baseValue === 'number' ? record.baseValue : undefined,
+    };
+  }
+  return null;
 }
 
 @Processor('executions')
@@ -33,16 +70,19 @@ export interface ExecutionJobData {
 export class ExecutionsProcessor extends WorkerHost {
   private readonly logger = new Logger(ExecutionsProcessor.name);
   private redisClient: Redis;
+  private readonly services: ExecutorServices;
 
   constructor(
     private readonly repository: ExecutionsRepository,
     private readonly env: EnvService,
+    emailService: EmailService,
   ) {
     super();
     this.redisClient = new Redis({
       host: this.env.get('REDIS_HOST') || 'localhost',
       port: Number(this.env.get('REDIS_PORT')) || 6379,
     });
+    this.services = { email: emailService };
   }
 
   async process(job: Job<ExecutionJobData>) {
@@ -57,7 +97,7 @@ export class ExecutionsProcessor extends WorkerHost {
     let context: WorkflowContext = { triggerData };
     let isFirstNode = true;
     let activeEventId: string | null = null;
-    const stepLogs: any[] = [];
+    const stepLogs: StepLog[] = [];
 
     try {
       this.logger.log(`Starting background execution for ${executionId}`);
@@ -77,7 +117,7 @@ export class ExecutionsProcessor extends WorkerHost {
           if (existingExecution.outputData) {
             context = {
               ...context,
-              ...(existingExecution.outputData as Record<string, unknown>),
+              ...existingExecution.outputData,
             };
           }
           continue;
@@ -98,7 +138,12 @@ export class ExecutionsProcessor extends WorkerHost {
         try {
           // 2. Execute Node
           const executor = getNodeExecutor(node.type);
-          const output = await executor({ node: node as any, context, userId });
+          const output = await executor({
+            node,
+            context,
+            userId,
+            services: this.services,
+          });
 
           // 3. Mark Node SUCCESS
           await this.repository.updateNodeExecutionStatus(
@@ -130,7 +175,8 @@ export class ExecutionsProcessor extends WorkerHost {
           // IDEMPOTENCY ENGINE
           if (isFirstNode) {
             isFirstNode = false;
-            const triggered = !!(context.trigger as any)?.triggered;
+            const triggerResult = parseTriggerOutput(context.trigger);
+            const triggered = triggerResult?.triggered ?? false;
 
             if (triggered) {
               const openEvent = await this.repository.findOpenAlertEvent(
@@ -157,10 +203,9 @@ export class ExecutionsProcessor extends WorkerHost {
                 workflowId: node.workflowId,
                 status: AlertEventStatus.OPEN,
                 triggerData: {
-                  metricValue: (context.trigger as any)?.value,
+                  metricValue: triggerResult?.value,
                   evaluatedThreshold:
-                    (context.trigger as any)?.thresholdValue ??
-                    (context.trigger as any)?.baseValue,
+                    triggerResult?.thresholdValue ?? triggerResult?.baseValue,
                 },
                 stepLogs: [],
               });
@@ -256,7 +301,7 @@ export class ExecutionsProcessor extends WorkerHost {
   }
 
   private async markRemainingNodesSkipped(
-    sortedNodes: NodeExecutionReference[],
+    sortedNodes: ExecutorNode[],
     failedNodeId: string,
     nodeExecutionIdByNodeId: Record<string, string>,
     executionId: string,

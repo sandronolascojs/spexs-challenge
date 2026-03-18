@@ -17,28 +17,19 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/ui/button';
 import { useTRPC } from '@/lib/trpc/client';
-import { NodeExecutionStatus } from '@spexs/types';
+import { NodeExecutionStatus, type NodeProgressMap } from '@spexs/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  Bell,
-  Loader2,
-  Mail,
-  MessageSquare,
-  Plus,
-  TrendingUp,
-  Zap,
-} from 'lucide-react';
+import { AlertCircle, Loader2, Plus } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWorkflowGraph } from '../hooks/use-workflow-graph';
 import { createsCycle } from '../lib/flow-rules';
 import { useWorkflowDialogStore } from '../stores/dialog-store';
 import type { WorkflowDetail } from '../types/canvas';
 import { NodePanel } from './node-panel';
-import { WorkflowDialogs } from './nodes/edit/workflow-dialogs';
-import { MessageNode } from './nodes/message-node';
-import { RecipientNode } from './nodes/recipient-node';
-import { TriggerNode } from './nodes/trigger-node';
+import { MessageNode } from './nodes/message/message-node';
+import { RecipientNode } from './nodes/recipient/recipient-node';
+import { TriggerNode } from './nodes/trigger/trigger-node';
+import { WorkflowDialogs } from './nodes/workflow-dialogs';
 import { TriggerWorkflowButton } from './trigger-workflow-button';
 
 // ── Node type registry ────────────────────────────────────────────────────────
@@ -48,7 +39,7 @@ const NODE_TYPES: NodeTypes = {
   recipient: RecipientNode,
 };
 
-const EMPTY_STATUSES = {};
+const EMPTY_STATUSES: NodeProgressMap = {};
 
 function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
   const [executionId, setExecutionId] = useState<string | null>(null);
@@ -71,7 +62,7 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
 
   const nodeStatuses = progressData ?? EMPTY_STATUSES;
   const isExecuting = Object.values(nodeStatuses).some(
-    (s: any) => s.status === NodeExecutionStatus.RUNNING,
+    (entry) => entry.status === NodeExecutionStatus.RUNNING,
   );
 
   const { nodes: initialNodes, edges: initialEdges } = useWorkflowGraph(
@@ -132,7 +123,6 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
       if (!connection.source || !connection.target) return;
       if (createsCycle(edges, connection.source, connection.target)) return;
 
-      // Optimistic: update local state immediately
       setEdges((currentEdges) =>
         addEdge(
           {
@@ -144,7 +134,6 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
         ),
       );
 
-      // Persist to DB
       addConnectionMutation.mutate({
         workflowId: workflow.id,
         fromNodeId: connection.source,
@@ -189,7 +178,6 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
             reconnectEdge(oldEdge, newConnection, currentEdges),
           );
 
-          // Remove old edge, create new connection
           removeConnectionMutation.mutate({ connectionId: oldEdge.id });
           addConnectionMutation.mutate({
             workflowId: workflow.id,
@@ -256,7 +244,7 @@ function CanvasLoading() {
     <div className="flex h-full w-full items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-3 text-muted-foreground">
         <Loader2 className="size-8 animate-spin" />
-        <p className="text-sm">Loading workflow…</p>
+        <p className="text-sm">Loading workflow...</p>
       </div>
     </div>
   );

@@ -9,30 +9,36 @@ import {
   BaseNodeHeaderTitle,
 } from '@/components/ui/react-flow/base-node';
 import { NodeStatusIndicator } from '@/components/ui/react-flow/node-status-indicator';
-import { cn } from '@/lib/utils';
-import { Position } from '@xyflow/react';
-import { useReactFlow } from '@xyflow/react';
+import { Position, useReactFlow } from '@xyflow/react';
 import { MessageSquare, Pencil, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { mapExecutionStatusToIndicator } from '../../lib/node-status';
-import { useWorkflowDialogStore } from '../../stores/dialog-store';
-import type { WorkflowNodeData } from '../../types/canvas';
+import { mapExecutionStatusToIndicator } from '../../../lib/node-status';
+import { useWorkflowDialogStore } from '../../../stores/dialog-store';
+import type { WorkflowNodeData } from '../../../types/canvas';
+import { NODE_CARD_CLASS } from '../shared/node-card-styles';
+import { parseOutputMessageData } from '../shared/parse-node-data';
+import { VARIABLE_TOKEN_PATTERN } from '../shared/variable-token-pattern';
 
-type Props = { data: WorkflowNodeData };
+interface MessageNodeProps {
+  data: WorkflowNodeData;
+}
 
-// Matches {{variable}} tokens inside the message template
-const VARIABLE_PATTERN = /(\\{\\{[^}]+\\}\\})/g;
-
+/**
+ * Splits a template by `{{variable}}` tokens and renders them
+ * as highlighted `<code>` elements.
+ */
 function renderTemplate(template: string): ReactNode[] {
-  const segments = template.split(VARIABLE_PATTERN);
-  const renderedSegments: ReactNode[] = [];
-  let segmentOffset = 0;
+  const segments = template.split(VARIABLE_TOKEN_PATTERN);
+  const rendered: ReactNode[] = [];
+  let charOffset = 0;
 
   for (const segment of segments) {
-    const segmentKey = `${segment}-${segmentOffset}`;
+    const segmentKey = `seg-${charOffset}`;
+    charOffset += segment.length;
 
-    if (/^\\{\\{[^}]+\\}\\}$/.test(segment)) {
-      renderedSegments.push(
+    VARIABLE_TOKEN_PATTERN.lastIndex = 0;
+    if (VARIABLE_TOKEN_PATTERN.test(segment)) {
+      rendered.push(
         <code
           key={segmentKey}
           className="rounded bg-primary/10 px-1 py-0.5 font-mono text-[11px] font-semibold text-primary"
@@ -41,16 +47,16 @@ function renderTemplate(template: string): ReactNode[] {
         </code>,
       );
     } else {
-      renderedSegments.push(<span key={segmentKey}>{segment}</span>);
+      rendered.push(<span key={segmentKey}>{segment}</span>);
     }
-    segmentOffset += segment.length;
   }
 
-  return renderedSegments;
+  return rendered;
 }
 
-export function MessageNode({ data }: Props) {
-  const template = (data.nodeData.template as string) ?? '';
+export function MessageNode({ data }: MessageNodeProps) {
+  const parsed = parseOutputMessageData(data.nodeData);
+  const template = parsed?.template ?? '';
   const statusProp = mapExecutionStatusToIndicator(data.executionStatus);
 
   const { openDialog } = useWorkflowDialogStore();
@@ -58,15 +64,7 @@ export function MessageNode({ data }: Props) {
 
   return (
     <NodeStatusIndicator status={statusProp}>
-      <BaseNode
-        data-tour="workflow-message-node"
-        className={cn(
-          'w-80 bg-card',
-          'border border-border/50',
-          '[box-shadow:0_0_0_1px_rgba(0,0,0,.02),0_1px_2px_rgba(0,0,0,.03)]',
-          'dark:[box-shadow:0_-10px_40px_-10px_#ffffff08_inset] dark:[border:1px_solid_rgba(255,255,255,.08)]',
-        )}
-      >
+      <BaseNode data-tour="workflow-message-node" className={NODE_CARD_CLASS}>
         <BaseHandle type="target" position={Position.Top} />
 
         <BaseNodeHeader>

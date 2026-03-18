@@ -25,7 +25,7 @@ export const outputMessageDataSchema = z.object({
 });
 
 export const recipientEmailDataSchema = z.object({
-  email: z.email(),
+  emails: z.array(z.email()).min(1, 'At least one email is required'),
 });
 
 export const recipientInAppDataSchema = z.object({

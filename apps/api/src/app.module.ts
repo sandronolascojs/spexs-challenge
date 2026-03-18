@@ -5,6 +5,7 @@ import { AuthModule } from '@thallesp/nestjs-better-auth';
 import { auth } from './lib/auth';
 import { EnvModule } from './lib/env/env.module';
 import { EnvService } from './lib/env/env.service';
+import { EmailModule } from './modules/email/email.module';
 import { HealthModule } from './modules/health/health.module';
 import { TrpcModule } from './modules/trpc/trpc.module';
 
@@ -27,6 +28,7 @@ import { TrpcModule } from './modules/trpc/trpc.module';
       }),
     }),
     AuthModule.forRoot({ auth }),
+    EmailModule,
     HealthModule,
     TrpcModule,
   ],

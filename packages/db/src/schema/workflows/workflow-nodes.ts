@@ -32,7 +32,7 @@ export const workflowNodes = pgTable(
       .references(() => workflows.id, { onDelete: 'cascade' }),
     type: nodeTypeEnum('type').notNull(),
     name: text('name').notNull(),
-    data: jsonb('data').notNull().default({}),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
     position: jsonb('position').$type<WorkflowNodePosition>().notNull(),
     createdAt: createdAtColumn(),
     updatedAt: updatedAtColumn(),

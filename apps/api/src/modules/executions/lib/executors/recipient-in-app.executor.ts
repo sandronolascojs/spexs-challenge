@@ -9,8 +9,14 @@ export const recipientInAppExecutor: NodeExecutor = async ({
   context,
   userId,
 }) => {
-  const messageData = context.message as { text: string } | undefined;
-  const messageText = messageData?.text ?? '';
+  const messageEntry = context.message;
+  const messageText =
+    messageEntry !== null &&
+    typeof messageEntry === 'object' &&
+    'text' in messageEntry &&
+    typeof messageEntry.text === 'string'
+      ? messageEntry.text
+      : '';
 
   // TODO: integrate with actual in-app notification service
   console.log(
