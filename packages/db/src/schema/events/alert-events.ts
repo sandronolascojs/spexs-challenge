@@ -18,8 +18,11 @@ export const alertEvents = pgTable(
     status: alertEventStatusEnum('status')
       .notNull()
       .default(AlertEventStatus.OPEN),
-    triggerData: jsonb('trigger_data').notNull().default({}),
-    stepLogs: jsonb('step_logs').notNull().default([]),
+    triggerData: jsonb('trigger_data')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    stepLogs: jsonb('step_logs').$type<unknown[]>().notNull().default([]),
     executionId: referenceId('execution_id').references(() => executions.id, {
       onDelete: 'set null',
     }),

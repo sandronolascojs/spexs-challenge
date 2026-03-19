@@ -8,13 +8,15 @@ import {
   executions,
   nodeExecutionComments,
   nodeExecutions,
+  users,
   workflowConnections,
   workflowNodes,
   workflows,
 } from '@spexs/db';
 import { AlertEventStatus, ExecutionStatus } from '@spexs/types';
 import type { NodeExecutionStatus, SortDirection } from '@spexs/types';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { topologicalSortNodes } from '../workflows/lib/topological-sort';
 
 @Injectable()
 export class ExecutionsRepository {
@@ -62,7 +64,7 @@ export class ExecutionsRepository {
     extra?: {
       inputData?: Record<string, unknown>;
       outputData?: Record<string, unknown>;
-      error?: string;
+      error?: string | null;
       startedAt?: Date;
       completedAt?: Date;
     },
@@ -119,14 +121,12 @@ export class ExecutionsRepository {
   ) {
     const offset = (query.page - 1) * query.pageSize;
 
-    const conditions = [eq(executions.workflowId, workflowId)];
-    if (query.status) {
-      conditions.push(
-        eq(executions.status, query.status) as ReturnType<typeof eq>,
-      );
-    }
-
-    const whereClause = and(...conditions);
+    const whereClause = query.status
+      ? and(
+          eq(executions.workflowId, workflowId),
+          eq(executions.status, query.status),
+        )
+      : eq(executions.workflowId, workflowId);
 
     const items = await this.database.db
       .select()
@@ -221,6 +221,17 @@ export class ExecutionsRepository {
   }
 
   /**
+   * Update the executionId on an alert event so getDetails fetches
+   * the correct (most recent) execution's node status rows.
+   */
+  async updateAlertEventExecutionId(eventId: string, executionId: string) {
+    await this.database.db
+      .update(alertEvents)
+      .set({ executionId })
+      .where(eq(alertEvents.id, eventId));
+  }
+
+  /**
    * Resolve an alert event.
    */
   async resolveAlertEvent(eventId: string, status: AlertEventStatus) {
@@ -246,6 +257,46 @@ export class ExecutionsRepository {
       .limit(1);
 
     return execution || null;
+  }
+
+  /**
+   * Lean progress query: returns the execution's own status plus a map of
+   * nodeId → NodeExecutionStatus. Used by the canvas poller to track a
+   * running execution in real time.
+   */
+  async findExecutionProgress(executionId: string) {
+    const [execution] = await this.database.db
+      .select({
+        id: executions.id,
+        status: executions.status,
+      })
+      .from(executions)
+      .where(eq(executions.id, executionId))
+      .limit(1);
+
+    if (!execution) return null;
+
+    const nodeExecs = await this.database.db
+      .select({
+        nodeId: nodeExecutions.nodeId,
+        status: nodeExecutions.status,
+        error: nodeExecutions.error,
+      })
+      .from(nodeExecutions)
+      .where(eq(nodeExecutions.executionId, executionId));
+
+    const nodeStatusByNodeId = Object.fromEntries(
+      nodeExecs.map((row) => [
+        row.nodeId,
+        { status: row.status, error: row.error },
+      ]),
+    );
+
+    return {
+      executionId: execution.id,
+      executionStatus: execution.status,
+      nodeStatusByNodeId,
+    };
   }
 
   /**
@@ -284,7 +335,13 @@ export class ExecutionsRepository {
         .map((ne) => [ne.nodeId, ne.outputData]),
     );
 
-    return { ...execution, nodeOutputByNodeId };
+    // Map nodeId → execution status so the canvas can restore status indicators
+    // from the last run even when there is no active live-poll session.
+    const nodeStatusByNodeId = Object.fromEntries(
+      nodeExecs.map((ne) => [ne.nodeId, ne.status]),
+    );
+
+    return { ...execution, nodeOutputByNodeId, nodeStatusByNodeId };
   }
 
   /**
@@ -314,16 +371,30 @@ export class ExecutionsRepository {
             .select()
             .from(nodeExecutionComments)
             .where(
-              sql`${nodeExecutionComments.nodeExecutionId} = ANY(ARRAY[${sql.join(
-                nodeExecutionIds.map((id) => sql`${id}::uuid`),
-                sql`, `,
-              )}])`,
+              inArray(nodeExecutionComments.nodeExecutionId, nodeExecutionIds),
             )
             .orderBy(nodeExecutionComments.createdAt)
         : [];
 
-    const commentsByNodeExecutionId = comments.reduce<
-      Record<string, typeof comments>
+    const userIds = [...new Set(comments.map((c) => c.userId))];
+    const commentUsers =
+      userIds.length > 0
+        ? await this.database.db
+            .select({ id: users.id, name: users.name, image: users.image })
+            .from(users)
+            .where(inArray(users.id, userIds))
+        : [];
+
+    const userById = Object.fromEntries(commentUsers.map((u) => [u.id, u]));
+
+    const commentsWithUser = comments.map((c) => ({
+      ...c,
+      userName: userById[c.userId]?.name ?? 'Unknown',
+      userImage: userById[c.userId]?.image ?? null,
+    }));
+
+    const commentsByNodeExecutionId = commentsWithUser.reduce<
+      Record<string, typeof commentsWithUser>
     >((accumulator, comment) => {
       const key = comment.nodeExecutionId;
       if (!accumulator[key]) {
@@ -338,7 +409,26 @@ export class ExecutionsRepository {
       comments: commentsByNodeExecutionId[ne.id] ?? [],
     }));
 
-    return { ...execution, nodeExecutions: nodeExecutionsWithComments };
+    const workflowNodeRows = await this.database.db
+      .select()
+      .from(workflowNodes)
+      .where(eq(workflowNodes.workflowId, execution.workflowId));
+
+    const workflowConnectionRows = await this.database.db
+      .select()
+      .from(workflowConnections)
+      .where(eq(workflowConnections.workflowId, execution.workflowId));
+
+    const allWorkflowNodes = topologicalSortNodes(
+      workflowNodeRows,
+      workflowConnectionRows,
+    );
+
+    return {
+      ...execution,
+      nodeExecutions: nodeExecutionsWithComments,
+      allWorkflowNodes,
+    };
   }
 
   /**
@@ -355,5 +445,69 @@ export class ExecutionsRepository {
       .returning();
 
     return created;
+  }
+
+  /**
+   * Find all executions currently in RUNNING state across all workflows.
+   * Used at boot time to recover any that lost their BullMQ job.
+   */
+  async findAllRunningExecutions() {
+    return this.database.db
+      .select()
+      .from(executions)
+      .where(eq(executions.status, ExecutionStatus.RUNNING));
+  }
+
+  /**
+   * Cursor-paginated comments for a specific node execution.
+   * Ordered newest-first; cursor is the ISO timestamp of the oldest item
+   * on the previous page.
+   */
+  async findCommentsByNodeExecutionId(params: {
+    nodeExecutionId: string;
+    cursor?: string;
+    limit: number;
+  }) {
+    const { nodeExecutionId, cursor, limit } = params;
+
+    const whereClause = cursor
+      ? and(
+          eq(nodeExecutionComments.nodeExecutionId, nodeExecutionId),
+          lt(nodeExecutionComments.createdAt, new Date(cursor)),
+        )
+      : eq(nodeExecutionComments.nodeExecutionId, nodeExecutionId);
+
+    const rows = await this.database.db
+      .select()
+      .from(nodeExecutionComments)
+      .where(whereClause)
+      .orderBy(desc(nodeExecutionComments.createdAt))
+      .limit(limit + 1);
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+
+    const userIds = [...new Set(items.map((c) => c.userId))];
+    const commentUsers =
+      userIds.length > 0
+        ? await this.database.db
+            .select({ id: users.id, name: users.name, image: users.image })
+            .from(users)
+            .where(inArray(users.id, userIds))
+        : [];
+
+    const userById = Object.fromEntries(commentUsers.map((u) => [u.id, u]));
+
+    const itemsWithUser = items.map((c) => ({
+      ...c,
+      userName: userById[c.userId]?.name ?? 'Unknown',
+      userImage: userById[c.userId]?.image ?? null,
+    }));
+
+    const lastItem = items.at(-1);
+    const nextCursor =
+      hasMore && lastItem?.createdAt ? lastItem.createdAt.toISOString() : null;
+
+    return { items: itemsWithUser, nextCursor };
   }
 }

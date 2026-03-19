@@ -1,10 +1,118 @@
 import { Injectable } from '@nestjs/common';
-import { NodeType, type WorkflowListQueryInput } from '@spexs/types';
+import {
+  ComparisonOperator,
+  NodeType,
+  type WorkflowListQueryInput,
+  WorkflowTemplate,
+} from '@spexs/types';
 import { TRPCError } from '@trpc/server';
 import { topologicalSortNodes } from './lib/topological-sort';
 import { WorkflowsRepository } from './workflows.repository';
 
-const DEFAULT_TRIGGER_POSITION = { x: 0, y: 0 };
+// ── Template node/connection seed definitions ─────────────────────────────────
+
+interface SeedNode {
+  type: NodeType;
+  name: string;
+  data: Record<string, unknown>;
+  position: { x: number; y: number };
+}
+
+interface SeedConnection {
+  fromIndex: number;
+  toIndex: number;
+}
+
+interface TemplateSeed {
+  nodes: SeedNode[];
+  connections: SeedConnection[];
+}
+
+const TEMPLATE_SEEDS: Record<WorkflowTemplate, TemplateSeed> = {
+  [WorkflowTemplate.THRESHOLD]: {
+    nodes: [
+      {
+        type: NodeType.TRIGGER_THRESHOLD,
+        name: 'Threshold Trigger',
+        data: {
+          metricName: 'cpu_usage',
+          operator: ComparisonOperator.GREATER_THAN,
+          thresholdValue: 80,
+        },
+        position: { x: 100, y: 100 },
+      },
+      {
+        type: NodeType.OUTPUT_MESSAGE,
+        name: 'Alert Message',
+        data: {
+          template:
+            'Alert: {{trigger.metricName}} is {{trigger.value}} (threshold: {{trigger.thresholdValue}})',
+        },
+        position: { x: 100, y: 380 },
+      },
+      {
+        type: NodeType.RECIPIENT_EMAIL,
+        name: 'Send Email',
+        data: { emails: [] },
+        position: { x: 100, y: 660 },
+      },
+    ],
+    connections: [
+      { fromIndex: 0, toIndex: 1 },
+      { fromIndex: 1, toIndex: 2 },
+    ],
+  },
+
+  [WorkflowTemplate.VARIANCE]: {
+    nodes: [
+      {
+        type: NodeType.TRIGGER_VARIANCE,
+        name: 'Variance Trigger',
+        data: {
+          metricName: 'memory_usage',
+          baseValue: 60,
+          deviationPercentage: 20,
+        },
+        position: { x: 100, y: 100 },
+      },
+      {
+        type: NodeType.OUTPUT_MESSAGE,
+        name: 'Anomaly Message',
+        data: {
+          template:
+            'Anomaly: {{trigger.metricName}} deviated by {{trigger.deviation}}% from baseline {{trigger.baseValue}}',
+        },
+        position: { x: 100, y: 380 },
+      },
+      {
+        type: NodeType.RECIPIENT_EMAIL,
+        name: 'Send Email',
+        data: { emails: [] },
+        position: { x: 100, y: 660 },
+      },
+    ],
+    connections: [
+      { fromIndex: 0, toIndex: 1 },
+      { fromIndex: 1, toIndex: 2 },
+    ],
+  },
+
+  [WorkflowTemplate.SCRATCH]: {
+    nodes: [
+      {
+        type: NodeType.TRIGGER_THRESHOLD,
+        name: 'Trigger',
+        data: {
+          metricName: '',
+          operator: ComparisonOperator.GREATER_THAN,
+          thresholdValue: 0,
+        },
+        position: { x: 100, y: 100 },
+      },
+    ],
+    connections: [],
+  },
+};
 
 @Injectable()
 export class WorkflowsService {
@@ -26,20 +134,26 @@ export class WorkflowsService {
     return workflow;
   }
 
-  async create(name: string, userId: string) {
-    const workflow = await this.repository.create({
-      name,
-      createdBy: userId,
-    });
+  async create(name: string, template: WorkflowTemplate, userId: string) {
+    const workflow = await this.repository.create({ name, createdBy: userId });
 
-    // Create a default trigger node
-    await this.repository.createNode({
-      workflowId: workflow.id,
-      type: NodeType.TRIGGER_THRESHOLD,
-      name: 'Trigger',
-      data: { metricName: '', operator: 'gt', thresholdValue: 0 },
-      position: DEFAULT_TRIGGER_POSITION,
-    });
+    const seed = TEMPLATE_SEEDS[template];
+
+    const createdNodes = await Promise.all(
+      seed.nodes.map((node) =>
+        this.repository.createNode({ workflowId: workflow.id, ...node }),
+      ),
+    );
+
+    await Promise.all(
+      seed.connections.map(({ fromIndex, toIndex }) =>
+        this.repository.createConnection({
+          workflowId: workflow.id,
+          fromNodeId: createdNodes[fromIndex].id,
+          toNodeId: createdNodes[toIndex].id,
+        }),
+      ),
+    );
 
     return this.getById(workflow.id);
   }

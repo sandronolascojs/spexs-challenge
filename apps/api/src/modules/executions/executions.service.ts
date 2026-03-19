@@ -1,34 +1,92 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import {
+  type AddStepCommentInput,
   ExecutionStatus,
+  type GetStepCommentsInput,
   NodeExecutionStatus,
-  type NodeProgressMap,
-  nodeProgressEntrySchema,
 } from '@spexs/types';
 import { TRPCError } from '@trpc/server';
 import { Queue } from 'bullmq';
-import Redis from 'ioredis';
-import { EnvService } from '../../lib/env/env.service';
 import { topologicalSortNodes } from '../workflows/lib/topological-sort';
 import type { ExecutionJobData } from './executions.processor';
 import { ExecutionsRepository } from './executions.repository';
 
 @Injectable()
-export class ExecutionsService {
+export class ExecutionsService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ExecutionsService.name);
-
-  private redisClient: Redis;
 
   constructor(
     private readonly repository: ExecutionsRepository,
-    @InjectQueue('executions') private readonly executionsQueue: Queue,
-    private readonly env: EnvService,
-  ) {
-    this.redisClient = new Redis({
-      host: this.env.get('REDIS_HOST') || 'localhost',
-      port: Number(this.env.get('REDIS_PORT')) || 6379,
-    });
+    @InjectQueue('executions')
+    private readonly executionsQueue: Queue<ExecutionJobData>,
+  ) {}
+
+  async onApplicationBootstrap() {
+    const runningExecutions = await this.repository.findAllRunningExecutions();
+
+    if (runningExecutions.length === 0) return;
+
+    this.logger.log(
+      `Found ${runningExecutions.length} RUNNING execution(s) at boot — checking BullMQ…`,
+    );
+
+    for (const execution of runningExecutions) {
+      // Check if a BullMQ job is already active/waiting for this execution
+      const jobs = await this.executionsQueue.getJobs([
+        'active',
+        'waiting',
+        'delayed',
+      ]);
+      const hasActiveJob = jobs.some(
+        (job) => job.data.executionId === execution.id,
+      );
+
+      if (hasActiveJob) {
+        this.logger.log(
+          `Execution ${execution.id} has an active BullMQ job — letting it resume`,
+        );
+        continue;
+      }
+
+      // No job in queue — re-enqueue using the stored execution data
+      this.logger.warn(
+        `Execution ${execution.id} has no BullMQ job — re-enqueueing for recovery`,
+      );
+
+      const executionData = await this.repository.findExecutionById(
+        execution.id,
+      );
+      if (!executionData) continue;
+
+      const graph = await this.repository.loadWorkflowGraph(
+        executionData.workflowId,
+      );
+      if (!graph) continue;
+
+      const sortedNodes = topologicalSortNodes(graph.nodes, graph.connections);
+
+      const nodeExecutionIdByNodeId = Object.fromEntries(
+        executionData.nodeExecutions.map((row) => [row.nodeId, row.id]),
+      );
+
+      await this.executionsQueue.add(
+        'execute-workflow',
+        {
+          executionId: executionData.id,
+          sortedNodes: sortedNodes.map((n) => ({
+            id: n.id,
+            type: n.type,
+            workflowId: n.workflowId,
+            data: n.data,
+          })),
+          nodeExecutionIdByNodeId,
+          triggerData: executionData.triggerData ?? {},
+          userId: executionData.triggeredBy,
+        } satisfies ExecutionJobData,
+        { removeOnComplete: true, removeOnFail: false },
+      );
+    }
   }
 
   /**
@@ -179,10 +237,7 @@ export class ExecutionsService {
           data: n.data,
         })),
         nodeExecutionIdByNodeId,
-        triggerData: (executionData.triggerData ?? {}) as Record<
-          string,
-          unknown
-        >,
+        triggerData: executionData.triggerData ?? {},
         userId,
       } satisfies ExecutionJobData,
       {
@@ -195,33 +250,20 @@ export class ExecutionsService {
   }
 
   /**
-   * Reads the active execution states from Redis hash cache
+   * Reads execution progress from the database — the single source of truth.
+   * Returns the execution's own status plus per-node statuses.
    */
-  async getProgress(executionId: string): Promise<NodeProgressMap> {
-    const cacheKey = `execution-progress:${executionId}`;
-    const rawData = await this.redisClient.hgetall(cacheKey);
+  async getProgress(executionId: string) {
+    const progress = await this.repository.findExecutionProgress(executionId);
 
-    // If redis is entirely empty for this key, it might not have started yet or it expired
-    if (!rawData || Object.keys(rawData).length === 0) {
-      return {};
+    if (!progress) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'Execution not found',
+      });
     }
 
-    // Parse out the stringified JSON rows per node
-    const parsedData: NodeProgressMap = {};
-    for (const [nodeId, payloadString] of Object.entries(rawData)) {
-      try {
-        const parsed = nodeProgressEntrySchema.safeParse(
-          JSON.parse(payloadString),
-        );
-        if (parsed.success) {
-          parsedData[nodeId] = parsed.data;
-        }
-      } catch {
-        // Ignore malformed JSON entries
-      }
-    }
-
-    return parsedData;
+    return progress;
   }
 
   async getLastExecutionStatus(workflowId: string) {
@@ -237,5 +279,17 @@ export class ExecutionsService {
       });
     }
     return details;
+  }
+
+  async getStepComments(input: GetStepCommentsInput) {
+    return this.repository.findCommentsByNodeExecutionId(input);
+  }
+
+  async addStepComment(input: AddStepCommentInput, userId: string) {
+    return this.repository.addNodeExecutionComment({
+      nodeExecutionId: input.nodeExecutionId,
+      userId,
+      content: input.content,
+    });
   }
 }

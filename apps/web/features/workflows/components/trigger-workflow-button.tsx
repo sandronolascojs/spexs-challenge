@@ -6,13 +6,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useTRPC } from '@/lib/trpc/client';
 import { cn } from '@/lib/utils';
 import { ExecutionStatus } from '@spexs/types';
-import { useMutation } from '@tanstack/react-query';
 import { Panel } from '@xyflow/react';
 import { Loader2, Play, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
+import { useRetryExecution } from '../hooks/http/use-executions';
 import type { WorkflowDetail } from '../types/canvas';
 import { TriggerDialog } from './trigger-dialog';
 
@@ -34,21 +33,17 @@ export function TriggerWorkflowButton({
   onTriggerSuccess,
   isExecuting,
 }: TriggerWorkflowButtonProps) {
-  const trpc = useTRPC();
   const [dialogOpen, setDialogOpen] = useState(false);
   const isInactive = !workflow.isActive;
 
-  const retryMutation = useMutation(
-    trpc.executions.retry.mutationOptions({
-      onSuccess: (data) => {
-        onTriggerSuccess?.(data.executionId);
-      },
-    }),
-  );
+  const retryMutation = useRetryExecution(workflow.id);
 
   const handleRetry = () => {
     if (lastExecution?.id) {
-      retryMutation.mutate({ executionId: lastExecution.id });
+      retryMutation.mutate(
+        { executionId: lastExecution.id },
+        { onSuccess: (data) => onTriggerSuccess?.(data.executionId) },
+      );
     }
   };
 

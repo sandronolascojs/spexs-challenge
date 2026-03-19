@@ -1,32 +1,11 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useTRPC } from '@/lib/trpc/client';
 import { NodeExecutionStatus } from '@spexs/types';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  CheckCircle2,
-  Clock,
-  Loader2,
-  MessageSquare,
-  Send,
-  XCircle,
-} from 'lucide-react';
-import { useState } from 'react';
-
-interface NodeExecutionComment {
-  id: string;
-  nodeExecutionId: string;
-  userId: string;
-  content: string;
-  createdAt: Date | string | null;
-}
+import { format } from 'date-fns';
+import { CheckCircle2, Clock, Loader2, XCircle } from 'lucide-react';
 
 interface NodeExecutionDetailProps {
-  nodeExecutionId: string;
   nodeType: string;
   status: NodeExecutionStatus;
   inputData?: Record<string, unknown>;
@@ -34,7 +13,6 @@ interface NodeExecutionDetailProps {
   error?: string | null;
   startedAt?: Date | string | null;
   completedAt?: Date | string | null;
-  comments?: NodeExecutionComment[];
 }
 
 const STATUS_CONFIG = {
@@ -67,11 +45,10 @@ const STATUS_CONFIG = {
 
 function formatDate(date: Date | string | null | undefined): string {
   if (!date) return '—';
-  return new Date(date).toLocaleString();
+  return format(new Date(date), 'MMM d, yyyy HH:mm:ss');
 }
 
 export function NodeExecutionDetail({
-  nodeExecutionId,
   nodeType,
   status,
   inputData,
@@ -79,36 +56,10 @@ export function NodeExecutionDetail({
   error,
   startedAt,
   completedAt,
-  comments = [],
 }: NodeExecutionDetailProps) {
-  const [comment, setComment] = useState('');
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-
   const statusConfig =
-    STATUS_CONFIG[status] || STATUS_CONFIG[NodeExecutionStatus.PENDING];
+    STATUS_CONFIG[status] ?? STATUS_CONFIG[NodeExecutionStatus.PENDING];
   const StatusIcon = statusConfig.icon;
-
-  const addCommentMutation = useMutation(
-    trpc.events.addStepComment.mutationOptions({
-      onSuccess: () => {
-        setComment('');
-        void queryClient.invalidateQueries(
-          trpc.executions.getDetails.queryFilter({
-            executionId: nodeExecutionId,
-          }),
-        );
-      },
-    }),
-  );
-
-  const handleAddComment = () => {
-    if (!comment.trim()) return;
-    addCommentMutation.mutate({
-      nodeExecutionId,
-      content: comment.trim(),
-    });
-  };
 
   return (
     <div className="space-y-4">
@@ -163,56 +114,6 @@ export function NodeExecutionDetail({
           </pre>
         </div>
       )}
-
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="size-4 text-muted-foreground" />
-          <p className="text-xs font-medium text-muted-foreground">Comments</p>
-        </div>
-
-        {comments.length > 0 && (
-          <div className="space-y-2">
-            {comments.map((c) => (
-              <div
-                key={c.id}
-                className="rounded-md border border-border/50 bg-muted/30 p-2"
-              >
-                <p className="text-sm">{c.content}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {formatDate(c.createdAt)}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="flex gap-2">
-          <Input
-            placeholder="Add a comment..."
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleAddComment();
-              }
-            }}
-            className="h-8 text-sm"
-          />
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={handleAddComment}
-            disabled={!comment.trim() || addCommentMutation.isPending}
-          >
-            {addCommentMutation.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Send className="size-4" />
-            )}
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { NodeType } from '@spexs/types';
 import type { NodeExecutor } from './executor-types';
+import { manualTriggerExecutor } from './executors/manual-trigger.executor';
 import { outputMessageExecutor } from './executors/output-message.executor';
 import { recipientEmailExecutor } from './executors/recipient-email.executor';
 import { recipientInAppExecutor } from './executors/recipient-in-app.executor';
@@ -11,6 +12,7 @@ import { triggerVarianceExecutor } from './executors/trigger-variance.executor';
  * Add new node types here as they are implemented.
  */
 const EXECUTOR_REGISTRY: Record<NodeType, NodeExecutor> = {
+  [NodeType.MANUAL_TRIGGER]: manualTriggerExecutor,
   [NodeType.TRIGGER_THRESHOLD]: triggerThresholdExecutor,
   [NodeType.TRIGGER_VARIANCE]: triggerVarianceExecutor,
   [NodeType.OUTPUT_MESSAGE]: outputMessageExecutor,

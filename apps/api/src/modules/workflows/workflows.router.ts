@@ -41,7 +41,7 @@ export function buildWorkflowsRouter(
     create: trpc.protectedProcedure
       .input(createWorkflowSchema)
       .mutation(({ input, ctx }) =>
-        service.create(input.name, ctx.session.user.id),
+        service.create(input.name, input.template, ctx.session.user.id),
       ),
 
     update: trpc.protectedProcedure

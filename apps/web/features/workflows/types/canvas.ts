@@ -27,3 +27,7 @@ export interface WorkflowNodeData extends Record<string, unknown> {
 
 // ── React Flow node type ──────────────────────────────────────────────────────
 export type WorkflowCanvasNode = Node<WorkflowNodeData>;
+
+// ── Node status map for canvas polling ────────────────────────────────────────
+/** Lightweight map of nodeId → execution status used by the canvas poller. */
+export type NodeStatusMap = Record<string, { status: NodeExecutionStatus }>;

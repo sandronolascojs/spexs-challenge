@@ -25,7 +25,7 @@ interface MessageNodeProps {
 
 /**
  * Splits a template by `{{variable}}` tokens and renders them
- * as highlighted `<code>` elements.
+ * as highlighted `<code>` chips.
  */
 function renderTemplate(template: string): ReactNode[] {
   const segments = template.split(VARIABLE_TOKEN_PATTERN);
@@ -67,21 +67,21 @@ export function MessageNode({ data }: MessageNodeProps) {
       <BaseNode data-tour="workflow-message-node" className={NODE_CARD_CLASS}>
         <BaseHandle type="target" position={Position.Top} />
 
-        <BaseNodeHeader>
-          <div className="flex items-center gap-2">
-            <div className="flex size-5 items-center justify-center rounded bg-emerald-500/10">
-              <MessageSquare className="size-3 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <BaseNodeHeaderTitle className="text-xs uppercase tracking-wider">
+        <BaseNodeHeader className="gap-2.5 pb-2">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/50">
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <BaseNodeHeaderTitle className="truncate text-sm font-semibold">
               {data.label}
             </BaseNodeHeaderTitle>
+            <p className="text-[10px] text-muted-foreground">Output message</p>
           </div>
-
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
               size="icon"
-              className="size-7 hover:bg-muted"
+              className="size-7 text-muted-foreground hover:text-foreground hover:bg-muted"
               onClick={() =>
                 openDialog({
                   type: 'edit-message',
@@ -94,7 +94,7 @@ export function MessageNode({ data }: MessageNodeProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="size-7 hover:bg-destructive/10 hover:text-destructive"
+              className="size-7 text-muted-foreground hover:text-destructive hover:bg-muted"
               onClick={() => deleteElements({ nodes: [{ id: data.nodeId }] })}
             >
               <Trash2 className="size-3.5" />
@@ -102,18 +102,22 @@ export function MessageNode({ data }: MessageNodeProps) {
           </div>
         </BaseNodeHeader>
 
-        <BaseNodeContent>
-          <div>
-            <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <BaseNodeContent className="pt-1">
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               Template
             </p>
-            <p className="text-sm leading-relaxed">
-              {template ? (
-                renderTemplate(template)
-              ) : (
-                <span className="text-muted-foreground">No template set</span>
-              )}
-            </p>
+            {template ? (
+              <div className="rounded-md bg-muted/50 px-3 py-2 text-sm leading-relaxed">
+                {renderTemplate(template)}
+              </div>
+            ) : (
+              <div className="rounded-md bg-muted/50 px-3 py-2">
+                <span className="text-xs italic text-muted-foreground">
+                  No template set
+                </span>
+              </div>
+            )}
           </div>
         </BaseNodeContent>
 

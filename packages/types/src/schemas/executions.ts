@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { NodeExecutionStatus } from '../enums/workflows';
+import { LARGE_PAGE_SIZE, SMALL_PAGE_SIZE } from '../constants/pagination';
 
 // ── Execute workflow schema ───────────────────────────────────────────────────
 
@@ -37,19 +37,12 @@ export const addStepCommentSchema = z.object({
 
 export type AddStepCommentInput = z.infer<typeof addStepCommentSchema>;
 
-// ── Node progress (cached in Redis during execution) ──────────────────────────
+// ── Get step comments schema (cursor-based pagination) ────────────────────────
 
-export const nodeProgressEntrySchema = z.object({
-  nodeId: z.string(),
-  status: z.nativeEnum(NodeExecutionStatus),
-  error: z.string().optional(),
-  outputData: z
-    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-    .optional(),
+export const getStepCommentsSchema = z.object({
+  nodeExecutionId: z.string().min(1),
+  cursor: z.string().optional(),
+  limit: z.number().min(1).max(LARGE_PAGE_SIZE).default(SMALL_PAGE_SIZE),
 });
 
-/** Single node's progress entry stored in Redis and returned by getProgress. */
-export type NodeProgressEntry = z.infer<typeof nodeProgressEntrySchema>;
-
-/** Map of nodeId → progress entry. Returned by `executions.getProgress`. */
-export type NodeProgressMap = Record<string, NodeProgressEntry>;
+export type GetStepCommentsInput = z.infer<typeof getStepCommentsSchema>;

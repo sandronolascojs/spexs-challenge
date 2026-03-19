@@ -1,14 +1,12 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Loader2, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { useTRPC } from '@/lib/trpc/client';
 import {
   NodeType,
   type OutputMessageData,
@@ -16,6 +14,13 @@ import {
 } from '@spexs/types';
 import { toast } from 'sonner';
 
+const EMPTY_TEMPLATE: OutputMessageData = { template: '' };
+
+import { useLastExecution } from '../../../hooks/http/use-executions';
+import {
+  useUpdateNodeData,
+  useWorkflow,
+} from '../../../hooks/http/use-workflows';
 import { InputVariablePanel, type InputViewTab } from './input-variable-panel';
 import { type VariableItem, flattenOutputData } from './lib/template-utils';
 import { MessageOutputPreview } from './message-output-preview';
@@ -34,8 +39,6 @@ export function MessageEditDialog({
   workflowId,
   onClose,
 }: MessageEditDialogProps) {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [cursorPosition, setCursorPosition] = useState<number | null>(null);
   const [activeInputView, setActiveInputView] =
@@ -43,13 +46,9 @@ export function MessageEditDialog({
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
-  const { data: workflow, isLoading: isWorkflowLoading } = useQuery(
-    trpc.workflows.getById.queryOptions({ id: workflowId }),
-  );
-
-  const { data: lastExecution } = useQuery(
-    trpc.executions.getLastExecution.queryOptions({ workflowId }),
-  );
+  const { data: workflow, isLoading: isWorkflowLoading } =
+    useWorkflow(workflowId);
+  const { data: lastExecution } = useLastExecution(workflowId);
 
   const messageNode = workflow?.nodes.find(
     (n) => n.type === NodeType.OUTPUT_MESSAGE,
@@ -92,33 +91,64 @@ export function MessageEditDialog({
   const templateValue =
     useWatch({ control: form.control, name: 'template' }) ?? '';
 
-  // Reset form when node data loads — useEffect ensures useWatch picks up the value
+  // Reset form once when node data loads.
+  // If there is no connected input node, start with an empty template because
+  // any prior {{variable}} tokens would silently resolve to empty strings at runtime.
   const messageNodeData = messageNode?.data;
   const formResetRef = useRef(false);
   useEffect(() => {
-    if (messageNodeData && !formResetRef.current) {
-      const parsed = outputMessageDataSchema.safeParse(messageNodeData);
-      if (parsed.success) {
-        form.reset(parsed.data);
-        formResetRef.current = true;
-      }
-    }
-  }, [messageNodeData, form]);
+    if (formResetRef.current || !messageNodeData) return;
+    formResetRef.current = true;
 
-  const updateMutation = useMutation(
-    trpc.workflows.updateNodeData.mutationOptions({
-      onSuccess: () => {
-        void queryClient.invalidateQueries(
-          trpc.workflows.getById.queryFilter({ id: workflowId }),
-        );
-        onClose();
-      },
-    }),
-  );
+    if (!inputNode) {
+      form.reset(EMPTY_TEMPLATE);
+      return;
+    }
+
+    const parsed = outputMessageDataSchema.safeParse(messageNodeData);
+    if (parsed.success) form.reset(parsed.data);
+  }, [messageNodeData, inputNode, form]);
+
+  const updateMutation = useUpdateNodeData(workflowId);
+
+  // Auto-clearing mutation — used when the input edge is disconnected while
+  // the dialog is open. Does not close the dialog on success.
+  const clearTemplateMutation = useUpdateNodeData(workflowId);
+
+  // Keep a stable ref so the effect below doesn't re-run when the mutation
+  // object reference changes between renders.
+  const clearTemplateMutateRef = useRef(clearTemplateMutation.mutate);
+  useEffect(() => {
+    clearTemplateMutateRef.current = clearTemplateMutation.mutate;
+  });
+
+  // When the connected input node disappears (edge deleted while dialog is open),
+  // clear both the local form and the persisted template in the DB so that stale
+  // {{variable}} tokens don't survive to execution time.
+  // prevInputNodeIdRef starts as undefined so the first render (defined → defined)
+  // can never trigger a false-positive clear.
+  const inputNodeId = inputNode?.id;
+  const messageNodeId = messageNode?.id;
+  const prevInputNodeIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const hadInput = prevInputNodeIdRef.current !== undefined;
+    prevInputNodeIdRef.current = inputNodeId;
+
+    if (hadInput && inputNodeId === undefined && messageNodeId) {
+      form.reset(EMPTY_TEMPLATE);
+      clearTemplateMutateRef.current({
+        nodeId: messageNodeId,
+        data: EMPTY_TEMPLATE,
+      });
+    }
+  }, [inputNodeId, messageNodeId, form]);
 
   function handleSubmit(data: OutputMessageData) {
     if (!messageNode) return;
-    updateMutation.mutate({ nodeId: messageNode.id, data });
+    updateMutation.mutate(
+      { nodeId: messageNode.id, data },
+      { onSuccess: onClose },
+    );
   }
 
   // ── Variable insertion ────────────────────────────────────────────────────
@@ -184,9 +214,6 @@ export function MessageEditDialog({
           </Button>
 
           <div className="flex items-center gap-2">
-            <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-500/10">
-              <MessageSquare className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-            </div>
             <span className="text-sm font-medium">{messageNode.name}</span>
           </div>
 

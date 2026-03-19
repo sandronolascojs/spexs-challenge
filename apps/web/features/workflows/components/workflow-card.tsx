@@ -9,8 +9,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
-import { useTRPC } from '@/lib/trpc/client';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   GitBranch,
   Layers,
@@ -20,6 +18,10 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { memo } from 'react';
+import {
+  useDeleteWorkflow,
+  useToggleWorkflowActive,
+} from '../hooks/http/use-workflows';
 import type { WorkflowListItem } from '../types/canvas';
 
 interface WorkflowCardProps {
@@ -27,19 +29,8 @@ interface WorkflowCardProps {
 }
 
 export function WorkflowCard({ workflow }: WorkflowCardProps) {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-
-  const invalidate = () =>
-    queryClient.invalidateQueries(trpc.workflows.list.queryFilter());
-
-  const toggleMutation = useMutation(
-    trpc.workflows.toggleActive.mutationOptions({ onSuccess: invalidate }),
-  );
-
-  const deleteMutation = useMutation(
-    trpc.workflows.delete.mutationOptions({ onSuccess: invalidate }),
-  );
+  const toggleMutation = useToggleWorkflowActive(workflow.id);
+  const deleteMutation = useDeleteWorkflow();
 
   const isBusy = toggleMutation.isPending || deleteMutation.isPending;
 

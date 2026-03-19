@@ -7,11 +7,13 @@ import { EnvModule } from './lib/env/env.module';
 import { EnvService } from './lib/env/env.service';
 import { EmailModule } from './modules/email/email.module';
 import { HealthModule } from './modules/health/health.module';
+import { SecurityModule } from './modules/security/security.module';
 import { TrpcModule } from './modules/trpc/trpc.module';
 
 @Module({
   imports: [
     EnvModule,
+    SecurityModule,
     DatabaseModule.forRootAsync({
       inject: [EnvService],
       useFactory: (env: EnvService): DatabaseModuleOptions => ({

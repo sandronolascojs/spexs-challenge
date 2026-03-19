@@ -1,6 +1,7 @@
 import { ComparisonOperator, triggerThresholdDataSchema } from '@spexs/types';
 import { TRPCError } from '@trpc/server';
 import type { NodeExecutor, WorkflowContext } from '../executor-types';
+import { isRecordWithValue } from '../type-guards';
 
 function evaluateThreshold(
   value: number,
@@ -22,16 +23,10 @@ function evaluateThreshold(
 }
 
 function extractMetricValue(context: WorkflowContext): number {
-  const triggerData = context.triggerData;
-  if (
-    triggerData !== null &&
-    typeof triggerData === 'object' &&
-    'value' in triggerData
-  ) {
-    const val = triggerData.value;
-    return typeof val === 'number' ? val : 0;
-  }
-  return 0;
+  return isRecordWithValue(context.triggerData) &&
+    typeof context.triggerData.value === 'number'
+    ? context.triggerData.value
+    : 0;
 }
 
 export const triggerThresholdExecutor: NodeExecutor = async ({

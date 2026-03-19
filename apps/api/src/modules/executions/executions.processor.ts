@@ -8,12 +8,11 @@ import {
   type WorkflowContext,
 } from '@spexs/types';
 import { Job } from 'bullmq';
-import Redis from 'ioredis';
-import { EnvService } from '../../lib/env/env.service';
 import { EmailService } from '../email/email.service';
 import { ExecutionsRepository } from './executions.repository';
 import { getNodeExecutor } from './lib/executor-registry';
 import type { ExecutorServices } from './lib/executor-types';
+import { isRecord } from './lib/type-guards';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,44 +43,33 @@ interface TriggerOutput {
 
 /** Safely narrows `context.trigger` to a typed object, or null. */
 function parseTriggerOutput(trigger: unknown): TriggerOutput | null {
-  if (
-    trigger !== null &&
-    typeof trigger === 'object' &&
-    'triggered' in trigger &&
-    typeof (trigger as Record<string, unknown>).triggered === 'boolean'
-  ) {
-    const record = trigger as Record<string, unknown>;
-    return {
-      triggered: Boolean(record.triggered),
-      value: typeof record.value === 'number' ? record.value : 0,
-      thresholdValue:
-        typeof record.thresholdValue === 'number'
-          ? record.thresholdValue
-          : undefined,
-      baseValue:
-        typeof record.baseValue === 'number' ? record.baseValue : undefined,
-    };
+  if (!isRecord(trigger) || typeof trigger.triggered !== 'boolean') {
+    return null;
   }
-  return null;
+
+  return {
+    triggered: trigger.triggered,
+    value: typeof trigger.value === 'number' ? trigger.value : 0,
+    thresholdValue:
+      typeof trigger.thresholdValue === 'number'
+        ? trigger.thresholdValue
+        : undefined,
+    baseValue:
+      typeof trigger.baseValue === 'number' ? trigger.baseValue : undefined,
+  };
 }
 
 @Processor('executions')
 @Injectable()
 export class ExecutionsProcessor extends WorkerHost {
   private readonly logger = new Logger(ExecutionsProcessor.name);
-  private redisClient: Redis;
   private readonly services: ExecutorServices;
 
   constructor(
     private readonly repository: ExecutionsRepository,
-    private readonly env: EnvService,
     emailService: EmailService,
   ) {
     super();
-    this.redisClient = new Redis({
-      host: this.env.get('REDIS_HOST') || 'localhost',
-      port: Number(this.env.get('REDIS_PORT')) || 6379,
-    });
     this.services = { email: emailService };
   }
 
@@ -120,6 +108,28 @@ export class ExecutionsProcessor extends WorkerHost {
               ...existingExecution.outputData,
             };
           }
+
+          // When the trigger node (first in sorted order) was already successful,
+          // recover the event context so downstream action nodes can continue.
+          if (isFirstNode) {
+            isFirstNode = false;
+            const triggerResult = parseTriggerOutput(context.trigger);
+            if (triggerResult?.triggered) {
+              const openEvent = await this.repository.findOpenAlertEvent(
+                node.workflowId,
+              );
+              if (openEvent) {
+                activeEventId = openEvent.id;
+                // Update the event's executionId to this execution so getDetails
+                // fetches the correct node execution rows.
+                await this.repository.updateAlertEventExecutionId(
+                  openEvent.id,
+                  executionId,
+                );
+              }
+            }
+          }
+
           continue;
         }
 
@@ -128,11 +138,6 @@ export class ExecutionsProcessor extends WorkerHost {
           nodeExecutionId,
           NodeExecutionStatus.RUNNING,
           { startedAt: new Date(), inputData: context },
-        );
-        await this.cacheNodeProgress(
-          executionId,
-          node.id,
-          NodeExecutionStatus.RUNNING,
         );
 
         try {
@@ -149,14 +154,7 @@ export class ExecutionsProcessor extends WorkerHost {
           await this.repository.updateNodeExecutionStatus(
             nodeExecutionId,
             NodeExecutionStatus.SUCCESS,
-            { outputData: output, completedAt: new Date() },
-          );
-          await this.cacheNodeProgress(
-            executionId,
-            node.id,
-            NodeExecutionStatus.SUCCESS,
-            undefined,
-            output,
+            { outputData: output, error: null, completedAt: new Date() },
           );
 
           // Accumulate the context rather than overwriting it purely
@@ -188,19 +186,20 @@ export class ExecutionsProcessor extends WorkerHost {
                   `Workflow ${node.workflowId} has an OPEN alert event. Aborting downstream action calls (Idempotency).`,
                 );
                 activeEventId = openEvent.id;
-                // Pre-fill logs if it's an existing event? Usually we just want THIS execution's logs
-                // But the requirement says "keep that updated and detailed to the user view"
-                // Let's just track this execution's progress in the alert event
+                await this.repository.updateAlertEventExecutionId(
+                  openEvent.id,
+                  executionId,
+                );
                 await this.markRemainingNodesSkipped(
                   sortedNodes,
                   node.id,
                   nodeExecutionIdByNodeId,
-                  executionId,
                 );
                 break;
               }
               const newEvent = await this.repository.createAlertEvent({
                 workflowId: node.workflowId,
+                executionId,
                 status: AlertEventStatus.OPEN,
                 triggerData: {
                   metricValue: triggerResult?.value,
@@ -215,7 +214,6 @@ export class ExecutionsProcessor extends WorkerHost {
                 sortedNodes,
                 node.id,
                 nodeExecutionIdByNodeId,
-                executionId,
               );
               break;
             }
@@ -238,12 +236,6 @@ export class ExecutionsProcessor extends WorkerHost {
             nodeExecutionId,
             NodeExecutionStatus.FAILED,
             { error: errorMessage, completedAt: new Date() },
-          );
-          await this.cacheNodeProgress(
-            executionId,
-            node.id,
-            NodeExecutionStatus.FAILED,
-            errorMessage,
           );
 
           // LOG FAILURE TO ALERT EVENT
@@ -296,20 +288,38 @@ export class ExecutionsProcessor extends WorkerHost {
       }
     } catch (globalError) {
       this.logger.error(`Execution failed catastrophically: ${globalError}`);
+
+      // The inner node-level catch already calls updateExecutionStatus(FAILED)
+      // for node errors. Here we only need to handle errors that occur outside
+      // the node loop (e.g. DB failures during idempotency checks) where the
+      // execution row would otherwise stay stuck at RUNNING forever.
+      await this.repository
+        .updateExecutionStatus(executionId, ExecutionStatus.FAILED, {
+          error:
+            globalError instanceof Error
+              ? globalError.message
+              : 'Unknown error',
+          completedAt: new Date(),
+        })
+        .catch((updateError) => {
+          this.logger.error(
+            `Failed to mark execution ${executionId} as FAILED: ${updateError}`,
+          );
+        });
+
       throw globalError;
     }
   }
 
   private async markRemainingNodesSkipped(
     sortedNodes: ExecutorNode[],
-    failedNodeId: string,
+    lastProcessedNodeId: string,
     nodeExecutionIdByNodeId: Record<string, string>,
-    executionId: string,
   ) {
-    const failedIndex = sortedNodes.findIndex(
-      (node) => node.id === failedNodeId,
+    const lastIndex = sortedNodes.findIndex(
+      (node) => node.id === lastProcessedNodeId,
     );
-    for (let i = failedIndex + 1; i < sortedNodes.length; i++) {
+    for (let i = lastIndex + 1; i < sortedNodes.length; i++) {
       const node = sortedNodes[i];
       const nodeExecutionId = nodeExecutionIdByNodeId[node.id];
 
@@ -318,34 +328,7 @@ export class ExecutionsProcessor extends WorkerHost {
           nodeExecutionId,
           NodeExecutionStatus.SKIPPED,
         );
-        await this.cacheNodeProgress(
-          executionId,
-          node.id,
-          NodeExecutionStatus.SKIPPED,
-        );
       }
     }
-  }
-
-  private async cacheNodeProgress(
-    executionId: string,
-    nodeId: string,
-    status: NodeExecutionStatus,
-    error?: string,
-    outputData?: Record<string, unknown>,
-  ) {
-    // We use a Redis HASH where key is `execution:{executionId}` and Field is `{nodeId}`
-    // The TRPC progress endpoint will simply run `HGETALL execution:{executionId}`
-    const payload = JSON.stringify({
-      nodeId,
-      status,
-      ...(error ? { error } : {}),
-      ...(outputData ? { outputData } : {}),
-    });
-
-    // Store in Redis and automatically expire the key after 1 hour (3600s) to keep memory clean
-    const cacheKey = `execution-progress:${executionId}`;
-    await this.redisClient.hset(cacheKey, nodeId, payload);
-    await this.redisClient.expire(cacheKey, 3600);
   }
 }

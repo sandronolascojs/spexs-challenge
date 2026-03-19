@@ -4,12 +4,11 @@ import { DashboardTopNavbar } from '@/components/layout/dashboard-top-navbar';
 import { ResourceFilters } from '@/components/resource-filters';
 import { ResourceLayout } from '@/components/resource-layout';
 import { Button } from '@/components/ui/button';
-import { useTRPC } from '@/lib/trpc/client';
-import { useQuery } from '@tanstack/react-query';
 import { GitBranch, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { MemoizedWorkflowCard } from '../components/workflow-card';
+import { useWorkflowList } from '../hooks/http/use-workflows';
 import {
   DEFAULT_WORKFLOW_PAGINATION,
   WORKFLOW_SORT_OPTIONS,
@@ -73,12 +72,7 @@ export function WorkflowsListView() {
     }));
   };
 
-  const trpc = useTRPC();
-  const {
-    data: response,
-    isLoading,
-    error,
-  } = useQuery(trpc.workflows.list.queryOptions(pagination));
+  const { data: response, isLoading, error } = useWorkflowList(pagination);
 
   const workflows = response?.items ?? [];
   const meta = response?.meta;

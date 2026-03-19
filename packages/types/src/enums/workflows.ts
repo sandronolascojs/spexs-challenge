@@ -1,11 +1,18 @@
 // ── Node-based workflow engine enums ──────────────────────────────────────────
 
 export enum NodeType {
+  MANUAL_TRIGGER = 'manual_trigger',
   TRIGGER_THRESHOLD = 'trigger_threshold',
   TRIGGER_VARIANCE = 'trigger_variance',
   OUTPUT_MESSAGE = 'output_message',
   RECIPIENT_EMAIL = 'recipient_email',
   RECIPIENT_IN_APP = 'recipient_in_app',
+}
+
+export enum WorkflowTemplate {
+  THRESHOLD = 'threshold',
+  VARIANCE = 'variance',
+  SCRATCH = 'scratch',
 }
 
 export enum ExecutionStatus {

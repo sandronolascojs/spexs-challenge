@@ -2,6 +2,7 @@ import {
   executeWorkflowSchema,
   getExecutionDetailsSchema,
   getLastExecutionSchema,
+  getStepCommentsSchema,
 } from '@spexs/types';
 import type { TrpcService } from '../trpc/trpc.service';
 import type { ExecutionsService } from './executions.service';
@@ -38,5 +39,9 @@ export function buildExecutionsRouter(
       .mutation(({ input, ctx }) =>
         service.retryExecution(input.executionId, ctx.session.user.id),
       ),
+
+    getComments: trpc.protectedProcedure
+      .input(getStepCommentsSchema)
+      .query(({ input }) => service.getStepComments(input)),
   });
 }

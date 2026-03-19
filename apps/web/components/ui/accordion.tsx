@@ -32,32 +32,65 @@ function AccordionItem({
   );
 }
 
+function AccordionHeader({
+  className,
+  ...props
+}: React.ComponentProps<typeof AccordionPrimitive.Header>) {
+  return (
+    <AccordionPrimitive.Header
+      data-slot="accordion-header"
+      className={cn('flex items-center', className)}
+      {...props}
+    />
+  );
+}
+
+/**
+ * Bare trigger — use this inside an explicit <AccordionHeader> when you need
+ * sibling elements (e.g. an action button) in the same header row.
+ */
+function AccordionTriggerPrimitive({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof AccordionPrimitive.Trigger>) {
+  return (
+    <AccordionPrimitive.Trigger
+      data-slot="accordion-trigger"
+      className={cn(
+        'group/accordion-trigger relative flex flex-1 items-center gap-3 py-4 text-left text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronDownIcon
+        data-slot="accordion-trigger-icon"
+        className="pointer-events-none size-4 shrink-0 text-muted-foreground group-aria-expanded/accordion-trigger:hidden"
+      />
+      <ChevronUpIcon
+        data-slot="accordion-trigger-icon"
+        className="pointer-events-none hidden size-4 shrink-0 text-muted-foreground group-aria-expanded/accordion-trigger:inline"
+      />
+    </AccordionPrimitive.Trigger>
+  );
+}
+
+/**
+ * Convenience wrapper — renders its own <AccordionHeader> internally.
+ * Use when you don't need sibling elements alongside the trigger.
+ */
 function AccordionTrigger({
   className,
   children,
   ...props
 }: React.ComponentProps<typeof AccordionPrimitive.Trigger>) {
   return (
-    <AccordionPrimitive.Header className="flex">
-      <AccordionPrimitive.Trigger
-        data-slot="accordion-trigger"
-        className={cn(
-          'group/accordion-trigger relative flex flex-1 items-start justify-between rounded-md border border-transparent py-4 text-left text-sm font-medium transition-all outline-none hover:underline focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:after:border-ring disabled:pointer-events-none disabled:opacity-50 **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4 **:data-[slot=accordion-trigger-icon]:text-muted-foreground',
-          className,
-        )}
-        {...props}
-      >
+    <AccordionHeader>
+      <AccordionTriggerPrimitive className={className} {...props}>
         {children}
-        <ChevronDownIcon
-          data-slot="accordion-trigger-icon"
-          className="pointer-events-none shrink-0 group-aria-expanded/accordion-trigger:hidden"
-        />
-        <ChevronUpIcon
-          data-slot="accordion-trigger-icon"
-          className="pointer-events-none hidden shrink-0 group-aria-expanded/accordion-trigger:inline"
-        />
-      </AccordionPrimitive.Trigger>
-    </AccordionPrimitive.Header>
+      </AccordionTriggerPrimitive>
+    </AccordionHeader>
   );
 }
 
@@ -84,4 +117,11 @@ function AccordionContent({
   );
 }
 
-export { Accordion, AccordionItem, AccordionTrigger, AccordionContent };
+export {
+  Accordion,
+  AccordionHeader,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionTriggerPrimitive,
+  AccordionContent,
+};

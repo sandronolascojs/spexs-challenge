@@ -4,6 +4,7 @@ import { useWorkflowDialogStore } from '../../stores/dialog-store';
 import { MessageEditDialog } from './message/message-edit-dialog';
 import { RecipientEditDialog } from './recipient/recipient-edit-dialog';
 import { TriggerEditDialog } from './trigger/trigger-edit-dialog';
+import { TriggerRunModal } from './trigger/trigger-run-modal';
 
 export function WorkflowDialogs() {
   const { dialog, isOpen, closeDialog } = useWorkflowDialogStore();
@@ -14,6 +15,13 @@ export function WorkflowDialogs() {
     case 'edit-trigger':
       return (
         <TriggerEditDialog
+          workflowId={dialog.data.workflowId}
+          onClose={closeDialog}
+        />
+      );
+    case 'run-trigger':
+      return (
+        <TriggerRunModal
           workflowId={dialog.data.workflowId}
           onClose={closeDialog}
         />

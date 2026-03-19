@@ -20,13 +20,17 @@ export const SpinnerLoadingIndicator = ({
 }) => {
   return (
     <div className="relative">
-      <StatusBorder className="border-blue-700/40">{children}</StatusBorder>
+      <StatusBorder
+        className="border-primary/30"
+        glowClass="shadow-[0_0_8px_1px] shadow-primary/20"
+      >
+        {children}
+      </StatusBorder>
 
       <div className="bg-background/50 absolute inset-0 z-50 rounded-[9px] backdrop-blur-xs" />
       <div className="absolute inset-0 z-50">
-        <span className="absolute top-[calc(50%-1.25rem)] left-[calc(50%-1.25rem)] inline-block h-10 w-10 animate-ping rounded-full bg-blue-700/20" />
-
-        <LoaderCircle className="absolute top-[calc(50%-0.75rem)] left-[calc(50%-0.75rem)] size-6 animate-spin text-blue-700" />
+        <span className="absolute top-[calc(50%-1.25rem)] left-[calc(50%-1.25rem)] inline-block h-10 w-10 animate-ping rounded-full bg-primary/20" />
+        <LoaderCircle className="absolute top-[calc(50%-0.75rem)] left-[calc(50%-0.75rem)] size-6 animate-spin text-primary" />
       </div>
     </div>
   );
@@ -69,9 +73,11 @@ export const BorderLoadingIndicator = ({
 const StatusBorder = ({
   children,
   className,
+  glowClass,
 }: {
   children: ReactNode;
   className?: string;
+  glowClass?: string;
 }) => {
   return (
     <>
@@ -79,6 +85,7 @@ const StatusBorder = ({
         className={cn(
           'absolute -top-px -left-px h-[calc(100%+2px)] w-[calc(100%+2px)] rounded-[9px] border-2',
           className,
+          glowClass,
         )}
       />
       {children}
@@ -103,10 +110,22 @@ export const NodeStatusIndicator = ({
       }
     case 'success':
       return (
-        <StatusBorder className="border-emerald-600">{children}</StatusBorder>
+        <StatusBorder
+          className="border-emerald-500/50"
+          glowClass="shadow-[0_0_8px_1px] shadow-emerald-500/20"
+        >
+          {children}
+        </StatusBorder>
       );
     case 'error':
-      return <StatusBorder className="border-red-400">{children}</StatusBorder>;
+      return (
+        <StatusBorder
+          className="border-destructive/50"
+          glowClass="shadow-[0_0_8px_1px] shadow-destructive/20"
+        >
+          {children}
+        </StatusBorder>
+      );
     default:
       return <>{children}</>;
   }

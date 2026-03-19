@@ -1,173 +1,129 @@
 'use client';
 
 import { DashboardTopNavbar } from '@/components/layout/dashboard-top-navbar';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { useTRPC } from '@/lib/trpc/client';
-import { type CreateWorkflowInput, createWorkflowSchema } from '@spexs/types';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CircleDashed, GitBranch, Sigma, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { WorkflowTemplate, createWorkflowSchema } from '@spexs/types';
+import { GitBranch, Plus, Sigma } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { useCreateWorkflow } from '../hooks/http/use-workflows';
 
-const WORKFLOW_TEMPLATE_IDS = {
-  THRESHOLD: 'threshold-template',
-  VARIANCE: 'variance-template',
-  SCRATCH: 'scratch-template',
-} as const;
+// ── Template definitions ──────────────────────────────────────────────────────
 
-type WorkflowTemplateId =
-  (typeof WORKFLOW_TEMPLATE_IDS)[keyof typeof WORKFLOW_TEMPLATE_IDS];
-
-interface WorkflowTemplate {
-  id: WorkflowTemplateId;
+interface TemplateConfig {
+  template: WorkflowTemplate;
+  name: string;
   title: string;
   description: string;
-  highlights: readonly string[];
+  bullets: readonly string[];
   icon: typeof GitBranch;
-  input: CreateWorkflowInput;
 }
 
-const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
+const TEMPLATES: readonly TemplateConfig[] = [
   {
-    id: WORKFLOW_TEMPLATE_IDS.THRESHOLD,
+    template: WorkflowTemplate.THRESHOLD,
+    name: 'CPU Threshold Alert',
     title: 'Threshold Alert',
-    description:
-      'Best for fixed limits such as CPU, memory, latency, and queue depth.',
-    highlights: [
-      'Static threshold rule',
-      'Operator-aware trigger',
-      'Fast setup',
-    ],
+    description: 'Fires when a metric crosses a fixed limit.',
+    bullets: ['Static threshold rule', 'Operator-aware trigger', 'Fast setup'],
     icon: GitBranch,
-    input: {
-      name: 'CPU Threshold Alert',
-    },
   },
   {
-    id: WORKFLOW_TEMPLATE_IDS.VARIANCE,
+    template: WorkflowTemplate.VARIANCE,
+    name: 'Memory Variance Watch',
     title: 'Variance Watch',
-    description:
-      'Best for anomaly-style detection against a baseline and tolerance.',
-    highlights: [
-      'Baseline + deviation',
-      'Noise-resistant trigger',
-      'Great for trends',
-    ],
+    description: 'Fires when a metric deviates from a baseline.',
+    bullets: ['Baseline + deviation', 'Noise-resistant trigger', 'Trend-aware'],
     icon: Sigma,
-    input: {
-      name: 'Memory Variance Watch',
-    },
   },
-  {
-    id: WORKFLOW_TEMPLATE_IDS.SCRATCH,
-    title: 'Create From Scratch',
-    description:
-      'Create an empty starter workflow and configure everything in the canvas.',
-    highlights: ['Blank start', 'Canvas-first editing', 'Agnostic structure'],
-    icon: CircleDashed,
-    input: {
-      name: 'Untitled Workflow',
-    },
-  },
-];
+] as const;
 
 const SCRATCH_MODE = 'scratch';
 
-function getTemplateById(id: WorkflowTemplateId): WorkflowTemplate {
-  const template = WORKFLOW_TEMPLATES.find((item) => item.id === id);
-  if (!template) {
-    return WORKFLOW_TEMPLATES[0];
-  }
-  return template;
-}
+// ── Template card ─────────────────────────────────────────────────────────────
 
 function TemplateCard({
-  template,
+  config,
   disabled,
   onSelect,
 }: {
-  template: WorkflowTemplate;
+  config: TemplateConfig;
   disabled: boolean;
-  onSelect: (template: WorkflowTemplate) => void;
+  onSelect: (config: TemplateConfig) => void;
 }) {
-  const Icon = template.icon;
+  const Icon = config.icon;
 
   return (
-    <Card
-      className="cursor-pointer border-border/60 transition hover:border-primary/60 hover:shadow-sm"
-      onClick={() => {
-        if (!disabled) {
-          onSelect(template);
-        }
-      }}
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onSelect(config)}
+      className="group relative flex flex-col rounded-2xl border border-border/60 bg-card p-6 text-left transition-all hover:border-primary/40 hover:shadow-md disabled:pointer-events-none disabled:opacity-50"
     >
-      <CardHeader>
-        <div className="mb-1 inline-flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon className="size-5" />
-        </div>
-        <CardTitle>{template.title}</CardTitle>
-        <CardDescription>{template.description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ul className="space-y-1.5 text-xs text-muted-foreground">
-          {template.highlights.map((item) => (
-            <li key={item} className="flex items-center gap-2">
-              <span className="size-1.5 rounded-full bg-primary/70" />
-              {item}
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
+      <div className="mb-4 inline-flex size-11 items-center justify-center rounded-xl border border-border/60 bg-muted/50 transition-colors group-hover:border-primary/30 group-hover:bg-primary/5">
+        <Icon className="size-5 text-muted-foreground transition-colors group-hover:text-primary" />
+      </div>
+
+      <h3 className="mb-1 text-base font-semibold tracking-tight">
+        {config.title}
+      </h3>
+      <p className="mb-5 text-sm text-muted-foreground">{config.description}</p>
+
+      <ul className="mt-auto space-y-1.5">
+        {config.bullets.map((bullet) => (
+          <li
+            key={bullet}
+            className="flex items-center gap-2 text-xs text-muted-foreground"
+          >
+            <span className="size-1 shrink-0 rounded-full bg-primary/50" />
+            {bullet}
+          </li>
+        ))}
+      </ul>
+    </button>
   );
 }
 
+// ── Main view ─────────────────────────────────────────────────────────────────
+
 export function CreateWorkflowView() {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const hasAutoCreatedFromModeRef = useRef(false);
+  const hasAutoCreatedRef = useRef(false);
 
-  const createMutation = useMutation(
-    trpc.workflows.create.mutationOptions({
-      onSuccess: async () => {
-        await queryClient.invalidateQueries(trpc.workflows.list.queryFilter());
-        router.push('/workflows');
-      },
-    }),
-  );
+  const createMutation = useCreateWorkflow();
 
-  function createWorkflowFromTemplate(template: WorkflowTemplate) {
-    const parsedInput = createWorkflowSchema.safeParse(template.input);
-    if (!parsedInput.success) {
-      return;
+  function handleSelect(config: TemplateConfig) {
+    const parsed = createWorkflowSchema.safeParse({
+      name: config.name,
+      template: config.template,
+    });
+    if (parsed.success) {
+      createMutation.mutate(parsed.data, {
+        onSuccess: () => router.push('/workflows'),
+      });
     }
-
-    createMutation.mutate(parsedInput.data);
   }
+
+  const handleScratch = useCallback(() => {
+    const parsed = createWorkflowSchema.safeParse({
+      name: 'Untitled Workflow',
+      template: WorkflowTemplate.SCRATCH,
+    });
+    if (parsed.success) {
+      createMutation.mutate(parsed.data, {
+        onSuccess: () => router.push('/workflows'),
+      });
+    }
+  }, [createMutation, router]);
 
   useEffect(() => {
     const mode = searchParams.get('mode');
-    if (mode !== SCRATCH_MODE || hasAutoCreatedFromModeRef.current) {
-      return;
-    }
+    if (mode !== SCRATCH_MODE || hasAutoCreatedRef.current) return;
 
-    const scratchTemplate = getTemplateById(WORKFLOW_TEMPLATE_IDS.SCRATCH);
-    const parsedInput = createWorkflowSchema.safeParse(scratchTemplate.input);
-    if (!parsedInput.success) {
-      return;
-    }
-
-    hasAutoCreatedFromModeRef.current = true;
-    createMutation.mutate(parsedInput.data);
-  }, [createMutation, searchParams]);
+    hasAutoCreatedRef.current = true;
+    handleScratch();
+  }, [searchParams, handleScratch]);
 
   return (
     <>
@@ -178,43 +134,49 @@ export function CreateWorkflowView() {
         ]}
       />
 
-      <div className="mx-auto w-full max-w-6xl space-y-6 p-4 pt-0">
-        <div className="rounded-2xl border border-border/60 bg-card/60 p-6">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 inline-flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Sparkles className="size-4" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">
-                Create Workflow
-              </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Choose a starting point. Selecting any card creates the workflow
-                immediately and sends you back to the list.
-              </p>
-            </div>
-          </div>
+      <div className="mx-auto w-full max-w-3xl space-y-4 p-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">New Workflow</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Start from a template or build from scratch.
+          </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {WORKFLOW_TEMPLATES.map((template) => (
+        {/* Template cards */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {TEMPLATES.map((config) => (
             <TemplateCard
-              key={template.id}
-              template={template}
+              key={config.template}
+              config={config}
               disabled={createMutation.isPending}
-              onSelect={createWorkflowFromTemplate}
+              onSelect={handleSelect}
             />
           ))}
         </div>
+
+        {/* From scratch */}
+        <button
+          type="button"
+          disabled={createMutation.isPending}
+          onClick={handleScratch}
+          className="group flex w-full items-center justify-center gap-3 rounded-2xl border border-dashed border-border/60 bg-transparent px-6 py-8 transition-all hover:border-primary/40 hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
+        >
+          <div className="flex size-9 items-center justify-center rounded-lg border border-border/60 bg-muted/50 transition-colors group-hover:border-primary/30 group-hover:bg-primary/5">
+            <Plus className="size-4 text-muted-foreground transition-colors group-hover:text-primary" />
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-medium">Start from scratch</p>
+            <p className="text-xs text-muted-foreground">
+              Blank canvas, you configure everything.
+            </p>
+          </div>
+        </button>
 
         {createMutation.error && (
           <p className="text-sm text-destructive">
             {createMutation.error.message}
           </p>
-        )}
-
-        {createMutation.isPending && (
-          <p className="text-sm text-muted-foreground">Creating workflow…</p>
         )}
       </div>
     </>

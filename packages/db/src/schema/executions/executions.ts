@@ -24,9 +24,12 @@ export const executions = pgTable(
     triggeredBy: referenceId('triggered_by')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    triggerData: jsonb('trigger_data').notNull().default({}),
+    triggerData: jsonb('trigger_data')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
     error: text('error'),
-    output: jsonb('output'),
+    output: jsonb('output').$type<Record<string, unknown>>(),
     startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),

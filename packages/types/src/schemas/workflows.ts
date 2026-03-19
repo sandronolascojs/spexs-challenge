@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { SORT_DIRECTIONS, WORKFLOW_SORT_FIELDS } from '../constants/pagination';
-import { ComparisonOperator, NodeType } from '../enums/workflows';
+import {
+  ComparisonOperator,
+  NodeType,
+  WorkflowTemplate,
+} from '../enums/workflows';
 import {
   createPaginatedResponseSchema,
   paginationQuerySchema,
@@ -8,9 +12,11 @@ import {
 
 // ── Node data schemas (per NodeType) ──────────────────────────────────────────
 
+export const manualTriggerDataSchema = z.object({});
+
 export const triggerThresholdDataSchema = z.object({
   metricName: z.string().min(1),
-  operator: z.enum(ComparisonOperator),
+  operator: z.nativeEnum(ComparisonOperator),
   thresholdValue: z.number(),
 });
 
@@ -43,7 +49,7 @@ export const nodePositionSchema = z.object({
 
 export const addNodeSchema = z.object({
   workflowId: z.string().min(1),
-  type: z.enum(NodeType),
+  type: z.nativeEnum(NodeType),
   name: z.string().min(1),
   data: z.record(z.string(), z.unknown()).default({}),
   position: nodePositionSchema,
@@ -81,6 +87,7 @@ export const removeConnectionSchema = z.object({
 
 export const createWorkflowSchema = z.object({
   name: z.string().min(1).max(255),
+  template: z.nativeEnum(WorkflowTemplate).default(WorkflowTemplate.SCRATCH),
 });
 
 export const updateWorkflowSchema = z.object({
@@ -131,6 +138,7 @@ export const paginatedWorkflowListSchema = createPaginatedResponseSchema(
 
 // ── Inferred types ────────────────────────────────────────────────────────────
 
+export type ManualTriggerData = z.infer<typeof manualTriggerDataSchema>;
 export type TriggerThresholdData = z.infer<typeof triggerThresholdDataSchema>;
 export type TriggerVarianceData = z.infer<typeof triggerVarianceDataSchema>;
 export type OutputMessageData = z.infer<typeof outputMessageDataSchema>;

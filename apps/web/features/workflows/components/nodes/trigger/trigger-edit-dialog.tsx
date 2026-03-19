@@ -1,7 +1,6 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, TrendingUp, Zap } from 'lucide-react';
 import { useEffect } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -29,7 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useTRPC } from '@/lib/trpc/client';
 import {
   ComparisonOperator,
   NodeType,
@@ -38,6 +36,10 @@ import {
   triggerThresholdDataSchema,
   triggerVarianceDataSchema,
 } from '@spexs/types';
+import {
+  useUpdateNodeData,
+  useWorkflow,
+} from '../../../hooks/http/use-workflows';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -228,32 +230,21 @@ export function TriggerEditDialog({
   workflowId,
   onClose,
 }: TriggerEditDialogProps) {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-
-  const { data: workflow, isLoading } = useQuery(
-    trpc.workflows.getById.queryOptions({ id: workflowId }),
-  );
+  const { data: workflow, isLoading } = useWorkflow(workflowId);
 
   const triggerNode = workflow?.nodes.find((n) =>
     n.type.startsWith('trigger_'),
   );
   const isThreshold = triggerNode?.type === NodeType.TRIGGER_THRESHOLD;
 
-  const updateMutation = useMutation(
-    trpc.workflows.updateNodeData.mutationOptions({
-      onSuccess: () => {
-        void queryClient.invalidateQueries(
-          trpc.workflows.getById.queryFilter({ id: workflowId }),
-        );
-        onClose();
-      },
-    }),
-  );
+  const updateMutation = useUpdateNodeData(workflowId);
 
   function handleFormSubmit(formData: Record<string, unknown>) {
     if (!triggerNode) return;
-    updateMutation.mutate({ nodeId: triggerNode.id, data: formData });
+    updateMutation.mutate(
+      { nodeId: triggerNode.id, data: formData },
+      { onSuccess: onClose },
+    );
   }
 
   if (isLoading || !triggerNode) {

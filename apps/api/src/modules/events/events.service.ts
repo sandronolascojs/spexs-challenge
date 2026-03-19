@@ -5,14 +5,14 @@ import type {
   ResolveAlertEventInput,
 } from '@spexs/types';
 import { TRPCError } from '@trpc/server';
-import { ExecutionsRepository } from '../executions/executions.repository';
+import { ExecutionsService } from '../executions/executions.service';
 import { EventsRepository } from './events.repository';
 
 @Injectable()
 export class EventsService {
   constructor(
     private readonly repository: EventsRepository,
-    private readonly executionsRepository: ExecutionsRepository,
+    private readonly executionsService: ExecutionsService,
   ) {}
 
   async list(input: ListAlertEventsInput) {
@@ -61,10 +61,6 @@ export class EventsService {
   }
 
   async addStepComment(input: AddStepCommentInput, userId: string) {
-    return this.executionsRepository.addNodeExecutionComment({
-      nodeExecutionId: input.nodeExecutionId,
-      userId,
-      content: input.content,
-    });
+    return this.executionsService.addStepComment(input, userId);
   }
 }

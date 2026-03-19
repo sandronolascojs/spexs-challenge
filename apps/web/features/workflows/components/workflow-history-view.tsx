@@ -3,8 +3,9 @@
 import {
   Accordion,
   AccordionContent,
+  AccordionHeader,
   AccordionItem,
-  AccordionTrigger,
+  AccordionTriggerPrimitive,
 } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,16 +17,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
-import { useTRPC } from '@/lib/trpc/client';
 import {
   AlertEventStatus,
   ExecutionStatus,
   NodeExecutionStatus,
 } from '@spexs/types';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
 import {
   AlertCircle,
   AlertTriangle,
@@ -33,12 +33,19 @@ import {
   Clock,
   History,
   Loader2,
+  MessageSquare,
   RotateCcw,
 } from 'lucide-react';
 import { useQueryStates } from 'nuqs';
 import { useState } from 'react';
+import { useAlertEvents, useResolveAlertEvent } from '../hooks/http/use-events';
+import {
+  useExecutionDetails,
+  useRetryExecution,
+} from '../hooks/http/use-executions';
 import { historyPageParser, historyPageSizeParser } from '../lib/search-params';
 import { NodeExecutionDetail } from './node-execution-detail';
+import { StepCommentsSheet } from './step-comments-sheet';
 
 const HISTORY_PARAM_OPTIONS = { shallow: false } as const;
 
@@ -46,67 +53,76 @@ interface WorkflowHistoryViewProps {
   workflowId: string;
 }
 
+// ── Status config ─────────────────────────────────────────────────────────────
+
 const EVENT_STATUS_CONFIG = {
   [AlertEventStatus.OPEN]: {
-    label: 'Open Alert',
-    variant: 'destructive' as const,
+    label: 'Open',
     icon: AlertTriangle,
-    className: 'bg-destructive/10 text-destructive',
+    dotClass: 'bg-destructive',
+    badgeClass: 'border-destructive/30 bg-destructive/10 text-destructive',
   },
   [AlertEventStatus.RESOLVED]: {
     label: 'Resolved',
-    variant: 'secondary' as const,
     icon: CheckCircle2,
-    className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+    dotClass: 'bg-emerald-500',
+    badgeClass:
+      'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
   },
 } as const;
 
+const STEP_STATUS_CLASS: Record<NodeExecutionStatus, string> = {
+  [NodeExecutionStatus.SUCCESS]:
+    'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+  [NodeExecutionStatus.FAILED]:
+    'bg-destructive/10 text-destructive border-destructive/20',
+  [NodeExecutionStatus.RUNNING]:
+    'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+  [NodeExecutionStatus.PENDING]: 'bg-muted text-muted-foreground border-border',
+  [NodeExecutionStatus.SKIPPED]: 'bg-muted text-muted-foreground border-border',
+};
+
+// ── Resolve dialog ────────────────────────────────────────────────────────────
+
 function ResolveEventDialog({
   eventId,
+  workflowId,
   onResolve,
 }: {
   eventId: string;
+  workflowId: string;
   onResolve: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [comment, setComment] = useState('');
-  const trpc = useTRPC();
 
-  const mutation = useMutation(
-    trpc.events.resolve.mutationOptions({
-      onSuccess: () => {
-        setOpen(false);
-        setComment('');
-        onResolve();
-      },
-    }),
-  );
+  const mutation = useResolveAlertEvent(workflowId);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="h-8 shadow-sm">
-          <CheckCircle2 className="mr-2 size-4 text-emerald-500" />
+        <Button size="sm" variant="outline">
+          <CheckCircle2 className="size-3.5 text-emerald-500" />
           Resolve
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Resolve Alert Event</DialogTitle>
+          <DialogTitle>Resolve Alert</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 py-4">
-          <div className="space-y-1">
+        <div className="space-y-3 py-2">
+          <div className="space-y-1.5">
             <Label
-              htmlFor="comment"
-              className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+              htmlFor="resolve-comment"
+              className="text-xs font-medium text-muted-foreground"
             >
-              Resolution Comment (Optional)
+              Resolution note (optional)
             </Label>
             <Textarea
-              id="comment"
+              id="resolve-comment"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="How was this alert resolved?"
+              placeholder="Describe how this alert was resolved…"
               className="resize-none"
               rows={3}
             />
@@ -118,12 +134,23 @@ function ResolveEventDialog({
           </Button>
           <Button
             disabled={mutation.isPending}
-            onClick={() => mutation.mutate({ eventId, comment })}
+            onClick={() =>
+              mutation.mutate(
+                { eventId, comment },
+                {
+                  onSuccess: () => {
+                    setOpen(false);
+                    setComment('');
+                    onResolve();
+                  },
+                },
+              )
+            }
           >
             {mutation.isPending && (
-              <Loader2 className="mr-2 size-4 animate-spin" />
+              <Loader2 className="size-3.5 animate-spin" />
             )}
-            {mutation.isPending ? 'Resolving...' : 'Mark as Resolved'}
+            {mutation.isPending ? 'Resolving…' : 'Mark as Resolved'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -131,365 +158,339 @@ function ResolveEventDialog({
   );
 }
 
-function EventStepDetails({
-  stepLogs,
-  nodeExecutions,
-}: {
-  stepLogs: Array<{
-    nodeId: string;
-    nodeType: string;
-    status: NodeExecutionStatus;
-    error?: string;
-    completedAt?: string;
-    output?: Record<string, unknown>;
-  }>;
-  nodeExecutions?: Array<{
-    id: string;
-    nodeId: string;
-    status: NodeExecutionStatus;
-    inputData?: unknown;
-    outputData?: unknown;
-    error?: string | null;
-    startedAt?: Date | string | null;
-    completedAt?: Date | string | null;
-    comments?: Array<{
-      id: string;
-      nodeExecutionId: string;
-      userId: string;
-      content: string;
-      createdAt: Date | string | null;
-    }>;
-  }>;
-}) {
-  if (!stepLogs || stepLogs.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">No step logs available.</p>
-    );
-  }
+// ── Selected step for comments sheet ─────────────────────────────────────────
 
-  return (
-    <Accordion type="multiple" className="w-full">
-      {stepLogs.map((step, index) => {
-        const nodeExec = nodeExecutions?.find(
-          (ne) => ne.nodeId === step.nodeId,
-        );
-        const stepNumber = index + 1;
-
-        return (
-          <AccordionItem key={step.nodeId} value={`step-${step.nodeId}`}>
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Step {stepNumber}:
-                </span>
-                <span className="text-sm font-medium">{step.nodeType}</span>
-                <Badge
-                  variant="outline"
-                  className={
-                    step.status === NodeExecutionStatus.SUCCESS
-                      ? 'bg-emerald-500/10 text-emerald-600'
-                      : step.status === NodeExecutionStatus.FAILED
-                        ? 'bg-destructive/10 text-destructive'
-                        : 'bg-muted text-muted-foreground'
-                  }
-                >
-                  {step.status}
-                </Badge>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent>
-              {nodeExec ? (
-                <NodeExecutionDetail
-                  nodeExecutionId={nodeExec.id}
-                  nodeType={step.nodeType}
-                  status={nodeExec.status}
-                  inputData={
-                    nodeExec.inputData as Record<string, unknown> | undefined
-                  }
-                  outputData={
-                    nodeExec.outputData as Record<string, unknown> | undefined
-                  }
-                  error={nodeExec.error ?? undefined}
-                  startedAt={nodeExec.startedAt ?? undefined}
-                  completedAt={nodeExec.completedAt ?? undefined}
-                  comments={nodeExec.comments}
-                />
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Status: {step.status}
-                  </p>
-                  {step.output && (
-                    <pre className="max-h-32 overflow-auto rounded-md bg-muted/50 p-2 text-xs">
-                      {JSON.stringify(step.output, null, 2)}
-                    </pre>
-                  )}
-                  {step.error && (
-                    <pre className="max-h-32 overflow-auto rounded-md bg-destructive/10 p-2 text-xs text-destructive">
-                      {step.error}
-                    </pre>
-                  )}
-                </div>
-              )}
-            </AccordionContent>
-          </AccordionItem>
-        );
-      })}
-    </Accordion>
-  );
+interface SelectedStep {
+  nodeExecutionId: string;
+  executionId: string;
+  nodeType: string;
 }
 
-/**
- * Lazily loads the full node executions (with outputData + comments) for an
- * alert event when the event has an associated executionId.
- * Falls back to the static stepLogs snapshot if no executionId is present.
- */
-function EventExecutionDetails({
+// ── Step list + retry — shows all workflow nodes and the authoritative retry button ──
+
+function EventSteps({
   executionId,
-  stepLogs,
+  onRetry,
+  isRetrying,
 }: {
-  executionId: string | null | undefined;
-  stepLogs: Array<{
-    nodeId: string;
-    nodeType: string;
-    status: NodeExecutionStatus;
-    error?: string;
-    completedAt?: string;
-    output?: Record<string, unknown>;
-  }>;
+  executionId: string;
+  onRetry: (executionId: string) => void;
+  isRetrying: boolean;
 }) {
-  const trpc = useTRPC();
+  const [selectedStep, setSelectedStep] = useState<SelectedStep | null>(null);
 
-  const { data: details, isLoading } = useQuery({
-    ...trpc.executions.getDetails.queryOptions({
-      executionId: executionId ?? '',
-    }),
-    enabled: !!executionId,
-  });
-
-  if (!executionId) {
-    return <EventStepDetails stepLogs={stepLogs} />;
-  }
+  const { data: details, isLoading } = useExecutionDetails(executionId);
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
         <Loader2 className="size-3 animate-spin" />
-        Loading step details…
+        Loading steps…
       </div>
     );
   }
 
+  const allNodes = details?.allWorkflowNodes ?? [];
+  const nodeExecutionByNodeId = Object.fromEntries(
+    (details?.nodeExecutions ?? []).map((ne) => [ne.nodeId, ne]),
+  );
+
+  // Retry is only valid when the execution itself is in FAILED state.
+  // We read this from the live execution row, not from stale stepLogs on the event.
+  const canRetry = details?.status === ExecutionStatus.FAILED;
+
   return (
-    <EventStepDetails
-      stepLogs={stepLogs}
-      nodeExecutions={details?.nodeExecutions}
-    />
+    <>
+      {/* Retry banner — shown at the top of the steps panel when execution is FAILED */}
+      {canRetry && (
+        <div className="flex items-center justify-between border-b border-border/40 py-2">
+          <p className="text-xs text-muted-foreground">
+            One or more steps failed.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onRetry(executionId)}
+            disabled={isRetrying}
+          >
+            {isRetrying ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RotateCcw className="size-3.5" />
+            )}
+            Retry
+          </Button>
+        </div>
+      )}
+
+      <Accordion type="multiple" className="w-full">
+        {allNodes.map((node, index) => {
+          const nodeExec = nodeExecutionByNodeId[node.id];
+          const isNewStep = !nodeExec;
+          const nodeType = node.type;
+
+          return (
+            <AccordionItem
+              key={node.id}
+              value={`step-${node.id}`}
+              className="border-b border-border/40 last:border-0"
+            >
+              <AccordionHeader>
+                <AccordionTriggerPrimitive className="flex-1 py-3 focus-visible:ring-0 focus-visible:outline-none">
+                  <span className="w-6 shrink-0 text-right text-[11px] font-mono text-muted-foreground/50">
+                    {index + 1}
+                  </span>
+                  <span className="flex-1 text-sm font-medium">{nodeType}</span>
+                  {isNewStep ? (
+                    <Badge
+                      variant="outline"
+                      className="h-5 rounded-full px-2 text-[10px] font-medium bg-muted text-muted-foreground border-border"
+                    >
+                      new
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className={`h-5 rounded-full px-2 text-[10px] font-medium ${STEP_STATUS_CLASS[nodeExec.status] ?? STEP_STATUS_CLASS[NodeExecutionStatus.PENDING]}`}
+                    >
+                      {nodeExec.status}
+                    </Badge>
+                  )}
+                </AccordionTriggerPrimitive>
+                {!isNewStep ? (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="mr-1 size-7 shrink-0 text-muted-foreground/40 hover:text-foreground"
+                    onClick={() => {
+                      setSelectedStep({
+                        nodeExecutionId: nodeExec.id,
+                        executionId,
+                        nodeType,
+                      });
+                    }}
+                  >
+                    <MessageSquare className="size-3.5" />
+                    <span className="sr-only">View comments</span>
+                  </Button>
+                ) : (
+                  <div className="mr-1 size-7 shrink-0" />
+                )}
+              </AccordionHeader>
+              <AccordionContent className="pb-3 pl-14">
+                {isNewStep ? (
+                  <p className="text-xs text-muted-foreground">
+                    This step was not part of this execution.
+                  </p>
+                ) : (
+                  <NodeExecutionDetail
+                    nodeType={nodeType}
+                    status={nodeExec.status}
+                    inputData={nodeExec.inputData ?? undefined}
+                    outputData={nodeExec.outputData ?? undefined}
+                    error={nodeExec.error ?? undefined}
+                    startedAt={nodeExec.startedAt ?? undefined}
+                    completedAt={nodeExec.completedAt ?? undefined}
+                  />
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          );
+        })}
+      </Accordion>
+
+      {selectedStep && (
+        <StepCommentsSheet
+          nodeExecutionId={selectedStep.nodeExecutionId}
+          executionId={selectedStep.executionId}
+          nodeType={selectedStep.nodeType}
+          open={selectedStep !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedStep(null);
+          }}
+        />
+      )}
+    </>
   );
 }
 
-export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
+// ── Single event card ─────────────────────────────────────────────────────────
 
+function EventCard({
+  event,
+  workflowId,
+  onResolve,
+  onRetry,
+  isRetrying,
+}: {
+  event: {
+    id: string;
+    status: AlertEventStatus;
+    executionId?: string | null;
+    triggerData: Record<string, unknown>;
+    createdAt: Date | string;
+    resolvedAt?: Date | string | null;
+  };
+  workflowId: string;
+  onResolve: () => void;
+  onRetry: (executionId: string) => void;
+  isRetrying: boolean;
+}) {
+  const statusConfig =
+    EVENT_STATUS_CONFIG[event.status] ??
+    EVENT_STATUS_CONFIG[AlertEventStatus.OPEN];
+
+  const StatusIcon = statusConfig.icon;
+
+  const trigData =
+    Object.keys(event.triggerData).length > 0 ? event.triggerData : null;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/60 bg-card transition-colors hover:border-border">
+      {/* Card header */}
+      <div className="flex items-start justify-between gap-3 p-4">
+        <div className="flex items-start gap-3">
+          <div
+            className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ${statusConfig.badgeClass}`}
+          >
+            <StatusIcon className="size-4" />
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold">Alert Triggered</span>
+              <Badge
+                variant="outline"
+                className={`h-5 px-1.5 text-[10px] font-semibold uppercase tracking-wide ${statusConfig.badgeClass}`}
+              >
+                {statusConfig.label}
+              </Badge>
+            </div>
+
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Clock className="size-3" />
+                {format(new Date(event.createdAt), 'MMM d, yyyy HH:mm')}
+              </span>
+              {event.resolvedAt && (
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 className="size-3 text-emerald-500" />
+                  Resolved{' '}
+                  {format(new Date(event.resolvedAt), 'MMM d, yyyy HH:mm')}
+                </span>
+              )}
+            </div>
+
+            {trigData && (
+              <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border/50 bg-muted/40 px-2.5 py-1 text-xs">
+                <span className="text-muted-foreground">Metric</span>
+                <span className="font-semibold text-foreground">
+                  {String(trigData.metricValue)}
+                </span>
+                <span className="text-muted-foreground">vs threshold</span>
+                <span className="font-semibold text-foreground">
+                  {String(trigData.evaluatedThreshold)}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Only the Resolve button lives in the card header; Retry lives inside EventSteps */}
+        {event.status === AlertEventStatus.OPEN && (
+          <div className="flex shrink-0 items-center gap-2">
+            <ResolveEventDialog
+              eventId={event.id}
+              workflowId={workflowId}
+              onResolve={onResolve}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Steps — shown whenever we have an executionId */}
+      {event.executionId && (
+        <>
+          <Separator />
+          <div className="px-4 py-1">
+            <EventSteps
+              executionId={event.executionId}
+              onRetry={onRetry}
+              isRetrying={isRetrying}
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Main view ─────────────────────────────────────────────────────────────────
+
+export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
   const [{ page, pageSize }, setParams] = useQueryStates(
-    {
-      page: historyPageParser,
-      pageSize: historyPageSizeParser,
-    },
+    { page: historyPageParser, pageSize: historyPageSizeParser },
     HISTORY_PARAM_OPTIONS,
   );
 
-  const { data, isLoading, error, refetch } = useQuery(
-    trpc.events.list.queryOptions({
-      workflowId,
-      page,
-      pageSize,
-    }),
-  );
+  const { data, isLoading, error, refetch } = useAlertEvents({
+    workflowId,
+    page,
+    pageSize,
+  });
 
-  const events = data?.items ?? [];
-  const meta = data?.meta;
-
-  const retryMutation = useMutation(
-    trpc.executions.retry.mutationOptions({
-      onSuccess: () => {
-        void queryClient.invalidateQueries(
-          trpc.events.list.queryFilter({ workflowId }),
-        );
-        void queryClient.invalidateQueries(
-          trpc.executions.getLastExecution.queryFilter({ workflowId }),
-        );
-      },
-    }),
-  );
+  const retryMutation = useRetryExecution(workflowId);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <AlertCircle className="mb-2 size-6 text-destructive" />
+      <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+        <AlertCircle className="size-5 text-destructive" />
         <p className="text-sm text-destructive">{error.message}</p>
       </div>
     );
   }
 
+  const events = data?.items ?? [];
+  const meta = data?.meta;
+
   if (events.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 px-4 py-16 text-center">
-        <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-muted">
-          <History className="size-7 text-muted-foreground" />
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-4 py-16 text-center">
+        <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-muted">
+          <History className="size-6 text-muted-foreground" />
         </div>
-        <h3 className="mb-1 text-base font-semibold">No alert events yet</h3>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          Any triggered alerts will appear here requiring resolution. Simulate
-          the workflow to generate an event.
+        <h3 className="mb-1 text-sm font-semibold">No events yet</h3>
+        <p className="max-w-xs text-xs text-muted-foreground">
+          Triggered alerts will appear here. Simulate the workflow to generate
+          an event.
         </p>
       </div>
     );
   }
 
   return (
-    <>
-      <div className="space-y-3">
-        {events.map((event) => {
-          const statusConfig =
-            EVENT_STATUS_CONFIG[event.status as AlertEventStatus] ||
-            EVENT_STATUS_CONFIG.OPEN;
-          const StatusIcon = statusConfig.icon;
-          const trigData = event.triggerData as Record<string, unknown> | null;
-          const stepLogs =
-            (event.stepLogs as Array<{
-              nodeId: string;
-              nodeType: string;
-              status: NodeExecutionStatus;
-              error?: string;
-              completedAt?: string;
-              output?: Record<string, unknown>;
-            }>) || [];
-
-          const hasFailedStep = stepLogs.some(
-            (s) => s.status === NodeExecutionStatus.FAILED,
-          );
-
-          return (
-            <div
-              key={event.id}
-              className="rounded-xl border border-border/60 bg-card p-4 transition-colors hover:border-border"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg ${statusConfig.className}`}
-                  >
-                    <StatusIcon className="size-5" />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold">
-                        Alert Triggered
-                      </span>
-                      <Badge
-                        variant={statusConfig.variant}
-                        className="h-5 border-0 px-2 text-[10px] font-medium uppercase"
-                      >
-                        {statusConfig.label}
-                      </Badge>
-                    </div>
-
-                    <div className="mt-1 flex flex-col gap-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Clock className="size-3" />
-                        <span>
-                          Opened: {new Date(event.createdAt).toLocaleString()}
-                        </span>
-                        {event.resolvedAt && (
-                          <>
-                            <span className="text-border">·</span>
-                            <span>
-                              Resolved:{' '}
-                              {new Date(event.resolvedAt).toLocaleString()}
-                            </span>
-                          </>
-                        )}
-                      </div>
-
-                      {trigData && (
-                        <div className="mt-2 rounded-md border border-border/50 bg-muted/40 p-2 text-sm">
-                          <span className="font-medium">Details: </span>
-                          <span className="text-muted-foreground">
-                            Metric value{' '}
-                            <strong className="text-foreground">
-                              {String(trigData.metricValue)}
-                            </strong>{' '}
-                            evaluated against threshold{' '}
-                            <strong className="text-foreground">
-                              {String(trigData.evaluatedThreshold)}
-                            </strong>
-                            .
-                          </span>
-                        </div>
-                      )}
-
-                      {stepLogs.length > 0 && (
-                        <div className="mt-3">
-                          <EventExecutionDetails
-                            executionId={event.executionId}
-                            stepLogs={stepLogs}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 gap-2">
-                  {hasFailedStep && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 shadow-sm"
-                      onClick={() => {
-                        const failedStep = stepLogs.find(
-                          (s) => s.status === NodeExecutionStatus.FAILED,
-                        );
-                        if (failedStep) {
-                          retryMutation.mutate({ executionId: event.id });
-                        }
-                      }}
-                      disabled={retryMutation.isPending}
-                    >
-                      {retryMutation.isPending ? (
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                      ) : (
-                        <RotateCcw className="mr-2 size-4" />
-                      )}
-                      Retry
-                    </Button>
-                  )}
-                  {event.status === AlertEventStatus.OPEN && (
-                    <ResolveEventDialog
-                      eventId={event.id}
-                      onResolve={() => refetch()}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+    <div className="space-y-3">
+      {events.map((event) => (
+        <EventCard
+          key={event.id}
+          event={event}
+          workflowId={workflowId}
+          onResolve={() => void refetch()}
+          onRetry={(executionId) => retryMutation.mutate({ executionId })}
+          isRetrying={retryMutation.isPending}
+        />
+      ))}
 
       {meta && meta.totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between">
+        <div className="flex items-center justify-between pt-1">
           <p className="text-xs text-muted-foreground">
             Page {meta.page} of {meta.totalPages} · {meta.total} events
           </p>
@@ -513,6 +514,6 @@ export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

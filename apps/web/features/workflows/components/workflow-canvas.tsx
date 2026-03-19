@@ -1,10 +1,12 @@
 'use client';
 
+import { ZoomControls } from '@/components/ui/react-flow/zoom-controls';
 import { ZoomSelect } from '@/components/ui/react-flow/zoom-select';
 import {
   Background,
   BackgroundVariant,
   type Connection,
+  type EdgeTypes,
   type NodeTypes,
   Panel,
   ReactFlow,
@@ -16,54 +18,97 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/ui/button';
-import { useTRPC } from '@/lib/trpc/client';
-import { NodeExecutionStatus, type NodeProgressMap } from '@spexs/types';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Loader2, Plus } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { ExecutionStatus, NodeType } from '@spexs/types';
+import { AlertCircle, Loader2, Play, Plus, RotateCcw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useExecutionProgress,
+  useLastExecution,
+  useRetryExecution,
+} from '../hooks/http/use-executions';
+import {
+  useAddConnection,
+  useRemoveConnection,
+  useRemoveNode,
+  useUpdateNodeData,
+  useUpdateNodePosition,
+  useWorkflow,
+} from '../hooks/http/use-workflows';
 import { useWorkflowGraph } from '../hooks/use-workflow-graph';
 import { createsCycle } from '../lib/flow-rules';
 import { useWorkflowDialogStore } from '../stores/dialog-store';
-import type { WorkflowDetail } from '../types/canvas';
+import { useExecutionStore } from '../stores/execution-store';
+import type { NodeStatusMap, WorkflowDetail } from '../types/canvas';
+import { WorkflowConnectionLine } from './edges/connection-line';
+import { WORKFLOW_EDGE_TYPES } from './edges/workflow-edge';
 import { NodePanel } from './node-panel';
+import { ManualTriggerNode } from './nodes/manual-trigger/manual-trigger-node';
 import { MessageNode } from './nodes/message/message-node';
 import { RecipientNode } from './nodes/recipient/recipient-node';
 import { TriggerNode } from './nodes/trigger/trigger-node';
 import { WorkflowDialogs } from './nodes/workflow-dialogs';
-import { TriggerWorkflowButton } from './trigger-workflow-button';
 
 // ── Node type registry ────────────────────────────────────────────────────────
 const NODE_TYPES: NodeTypes = {
+  'manual-trigger': ManualTriggerNode,
   trigger: TriggerNode,
   message: MessageNode,
   recipient: RecipientNode,
 };
 
-const EMPTY_STATUSES: NodeProgressMap = {};
+// ── Edge type registry ────────────────────────────────────────────────────────
+const EDGE_TYPES: EdgeTypes = {
+  ...WORKFLOW_EDGE_TYPES,
+};
+
+const EMPTY_STATUSES: NodeStatusMap = {};
 
 function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
-  const [executionId, setExecutionId] = useState<string | null>(null);
   const setNodePanelOpen = useWorkflowDialogStore((s) => s.setNodePanelOpen);
+  const openDialog = useWorkflowDialogStore((s) => s.openDialog);
 
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
+  // Execution state is written by ManualTriggerNode via the store
+  const { activeExecutionId, setActiveExecutionId } = useExecutionStore();
 
-  const { data: lastExecution } = useQuery(
-    trpc.executions.getLastExecution.queryOptions({ workflowId: workflow.id }),
+  const { data: lastExecution } = useLastExecution(workflow.id);
+
+  const { data: progressData } = useExecutionProgress(
+    activeExecutionId,
+    !!activeExecutionId,
   );
 
-  const { data: progressData } = useQuery({
-    ...trpc.executions.getProgress.queryOptions({
-      executionId: executionId || '',
-    }),
-    enabled: !!executionId,
-    refetchInterval: executionId ? 1000 : false,
-  });
+  // While a run is active, derive a NodeStatusMap from the DB-backed progress
+  // response so `useWorkflowGraph` can merge statuses into each node.
+  // Once the run finishes and we clear activeExecutionId, fall back to the
+  // persisted statuses from the last execution query.
+  const liveStatuses: NodeStatusMap = useMemo(() => {
+    if (!progressData?.nodeStatusByNodeId) return EMPTY_STATUSES;
+    return Object.fromEntries(
+      Object.entries(progressData.nodeStatusByNodeId).map(([nodeId, entry]) => [
+        nodeId,
+        { nodeId, status: entry.status },
+      ]),
+    );
+  }, [progressData?.nodeStatusByNodeId]);
 
-  const nodeStatuses = progressData ?? EMPTY_STATUSES;
-  const isExecuting = Object.values(nodeStatuses).some(
-    (entry) => entry.status === NodeExecutionStatus.RUNNING,
-  );
+  const lastRunStatuses: NodeStatusMap = useMemo(() => {
+    if (!lastExecution?.nodeStatusByNodeId) return EMPTY_STATUSES;
+    return Object.fromEntries(
+      Object.entries(lastExecution.nodeStatusByNodeId).map(
+        ([nodeId, status]) => [nodeId, { nodeId, status }],
+      ),
+    );
+  }, [lastExecution?.nodeStatusByNodeId]);
+
+  const nodeStatuses = activeExecutionId ? liveStatuses : lastRunStatuses;
+
+  // Execution finished = the DB says the execution is no longer RUNNING.
+  // This is authoritative — no more inferring from node-level progress counts.
+  const executionFinished =
+    !!activeExecutionId &&
+    !!progressData &&
+    progressData.executionStatus !== ExecutionStatus.RUNNING &&
+    progressData.executionStatus !== ExecutionStatus.PENDING;
 
   const { nodes: initialNodes, edges: initialEdges } = useWorkflowGraph(
     workflow,
@@ -72,46 +117,28 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  const invalidateWorkflow = useCallback(() => {
-    void queryClient.invalidateQueries(
-      trpc.workflows.getById.queryFilter({ id: workflow.id }),
-    );
-    void queryClient.invalidateQueries(
-      trpc.executions.getLastExecution.queryFilter({ workflowId: workflow.id }),
-    );
-  }, [queryClient, trpc, workflow.id]);
+  const invalidateWorkflow = useCallback(async () => {
+    // Invalidation is handled by the hooks themselves via their onSuccess;
+    // this no-op stub keeps call sites that pass it as onSuccess working.
+  }, []);
 
-  // Detect when execution finishes (isExecuting: true → false) and refresh caches
-  const wasExecutingRef = useRef(false);
+  // When execution finishes, force a refetch then clear the active ID.
+  const { refetch: refetchLastExecution } = useLastExecution(workflow.id);
   useEffect(() => {
-    if (wasExecutingRef.current && !isExecuting && executionId) {
-      invalidateWorkflow();
-      setExecutionId(null);
-    }
-    wasExecutingRef.current = isExecuting;
-  }, [isExecuting, executionId, invalidateWorkflow]);
+    if (!executionFinished) return;
+    void refetchLastExecution().then(() => {
+      setActiveExecutionId(null);
+    });
+  }, [executionFinished, refetchLastExecution, setActiveExecutionId]);
 
-  const removeNodeMutation = useMutation(
-    trpc.workflows.removeNode.mutationOptions({
-      onSuccess: invalidateWorkflow,
-    }),
-  );
+  const removeNodeMutation = useRemoveNode(workflow.id);
+  const addConnectionMutation = useAddConnection(workflow.id);
+  const removeConnectionMutation = useRemoveConnection(workflow.id);
+  const clearNodeTemplateMutation = useUpdateNodeData(workflow.id);
+  const updateNodePositionMutation = useUpdateNodePosition(workflow.id);
+  const retryMutation = useRetryExecution(workflow.id);
 
-  const addConnectionMutation = useMutation(
-    trpc.workflows.addConnection.mutationOptions({
-      onSuccess: invalidateWorkflow,
-    }),
-  );
-
-  const removeConnectionMutation = useMutation(
-    trpc.workflows.removeConnection.mutationOptions({
-      onSuccess: invalidateWorkflow,
-    }),
-  );
-
-  const updateNodePositionMutation = useMutation(
-    trpc.workflows.updateNodePosition.mutationOptions(),
-  );
+  const lastExecutionFailed = lastExecution?.status === ExecutionStatus.FAILED;
 
   useEffect(() => {
     setNodes(initialNodes);
@@ -127,8 +154,7 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
         addEdge(
           {
             ...connection,
-            type: 'smoothstep',
-            animated: workflow.isActive,
+            type: workflow.isActive ? 'workflow-animated' : 'workflow-default',
           },
           currentEdges,
         ),
@@ -191,6 +217,23 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
           for (const edge of deletedEdges) {
             removeConnectionMutation.mutate({ connectionId: edge.id });
           }
+
+          // If an edge into the message node was deleted, clear the persisted
+          // template so stale {{variable}} tokens don't linger in node data.
+          const messageNode = workflow.nodes.find(
+            (n) => n.type === NodeType.OUTPUT_MESSAGE,
+          );
+          if (messageNode) {
+            const targetsMessageNode = deletedEdges.some(
+              (e) => e.target === messageNode.id,
+            );
+            if (targetsMessageNode) {
+              clearNodeTemplateMutation.mutate({
+                nodeId: messageNode.id,
+                data: { template: '' },
+              });
+            }
+          }
         }}
         onNodesDelete={(deletedNodes) => {
           for (const node of deletedNodes) {
@@ -198,6 +241,8 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
           }
         }}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
+        connectionLineComponent={WorkflowConnectionLine}
         fitView
         fitViewOptions={{ padding: 0.22, maxZoom: 1.25 }}
         proOptions={{ hideAttribution: true }}
@@ -214,6 +259,7 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
           className="opacity-40"
         />
         <ZoomSelect position="top-right" />
+        <ZoomControls />
         <Panel position="top-left" className="m-4">
           <Button
             size="sm"
@@ -224,15 +270,56 @@ function WorkflowCanvasInner({ workflow }: { workflow: WorkflowDetail }) {
             Add Node
           </Button>
         </Panel>
-        <TriggerWorkflowButton
-          workflow={workflow}
-          lastExecution={lastExecution}
-          onTriggerSuccess={setExecutionId}
-          isExecuting={isExecuting}
-        />
+        {/* Bottom-right: Run / Retry / executing indicator */}
+        <Panel position="bottom-right" className="m-4">
+          {activeExecutionId ? (
+            <div className="flex items-center gap-2 rounded-md border border-border/50 bg-card px-3 py-2 text-xs text-muted-foreground shadow-sm">
+              <Loader2 className="size-3.5 animate-spin" />
+              Running…
+            </div>
+          ) : lastExecutionFailed && lastExecution ? (
+            <Button
+              size="sm"
+              variant="destructive"
+              className="gap-1.5 shadow-sm"
+              disabled={retryMutation.isPending}
+              onClick={() =>
+                retryMutation.mutate(
+                  { executionId: lastExecution.id },
+                  {
+                    onSuccess: (result) =>
+                      setActiveExecutionId(result.executionId),
+                  },
+                )
+              }
+            >
+              {retryMutation.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RotateCcw className="size-3.5" />
+              )}
+              Retry
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              className="gap-1.5 shadow-sm"
+              disabled={!workflow.isActive}
+              onClick={() =>
+                openDialog({
+                  type: 'run-trigger',
+                  data: { workflowId: workflow.id },
+                })
+              }
+            >
+              <Play className="size-3.5" />
+              Run
+            </Button>
+          )}
+        </Panel>
       </ReactFlow>
 
-      <NodePanel workflowId={workflow.id} />
+      <NodePanel workflowId={workflow.id} existingNodes={workflow.nodes} />
       <WorkflowDialogs />
     </>
   );
@@ -267,18 +354,13 @@ interface WorkflowCanvasProps {
 }
 
 export function WorkflowCanvas({ workflowId }: WorkflowCanvasProps) {
-  const trpc = useTRPC();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  const {
-    data: workflow,
-    isLoading,
-    error,
-  } = useQuery(trpc.workflows.getById.queryOptions({ id: workflowId }));
+  const { data: workflow, isLoading, error } = useWorkflow(workflowId);
 
   if (!isMounted || isLoading) return <CanvasLoading />;
   if (error) return <CanvasError message="Failed to load workflow." />;

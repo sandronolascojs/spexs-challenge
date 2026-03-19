@@ -4,7 +4,7 @@ import { paginationQuerySchema } from './pagination';
 
 export const listAlertEventsSchema = paginationQuerySchema.extend({
   workflowId: z.string().optional(),
-  status: z.enum(AlertEventStatus).optional(),
+  status: z.nativeEnum(AlertEventStatus).optional(),
 });
 
 export type ListAlertEventsInput = z.infer<typeof listAlertEventsSchema>;

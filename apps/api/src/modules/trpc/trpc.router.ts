@@ -1,4 +1,4 @@
-import { type INestApplication, Injectable } from '@nestjs/common';
+import { type INestApplication, Injectable, Logger } from '@nestjs/common';
 import * as trpcExpress from '@trpc/server/adapters/express';
 import { z } from 'zod';
 import { buildEventsRouter } from '../events/events.router';
@@ -13,6 +13,7 @@ import { TrpcService } from './trpc.service';
 @Injectable()
 export class TrpcRouter {
   appRouter: ReturnType<typeof this.buildRouter>;
+  private readonly logger = new Logger(TrpcRouter.name);
 
   constructor(
     private readonly trpc: TrpcService,
@@ -47,6 +48,14 @@ export class TrpcRouter {
       trpcExpress.createExpressMiddleware({
         router: this.appRouter,
         createContext: createTrpcContext,
+        onError: ({ path, error }) => {
+          if (error.code === 'INTERNAL_SERVER_ERROR') {
+            this.logger.error(
+              `tRPC error on ${path}: ${error.message}`,
+              error.stack,
+            );
+          }
+        },
       }),
     );
   }

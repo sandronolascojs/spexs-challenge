@@ -1,7 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Loader2, Mail, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Mail, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -15,7 +14,6 @@ import {
 } from '@/components/ui/dialog';
 import { Field, FieldDescription, FieldGroup } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { useTRPC } from '@/lib/trpc/client';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   NodeType,
@@ -24,6 +22,10 @@ import {
   recipientInAppDataSchema,
 } from '@spexs/types';
 import { useForm } from 'react-hook-form';
+import {
+  useUpdateNodeData,
+  useWorkflow,
+} from '../../../hooks/http/use-workflows';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -241,30 +243,19 @@ export function RecipientEditDialog({
   recipientId,
   onClose,
 }: RecipientEditDialogProps) {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-
-  const { data: workflow, isLoading } = useQuery(
-    trpc.workflows.getById.queryOptions({ id: workflowId }),
-  );
+  const { data: workflow, isLoading } = useWorkflow(workflowId);
 
   const recipientNode = workflow?.nodes.find((n) => n.id === recipientId);
   const isEmail = recipientNode?.type === NodeType.RECIPIENT_EMAIL;
 
-  const updateMutation = useMutation(
-    trpc.workflows.updateNodeData.mutationOptions({
-      onSuccess: () => {
-        void queryClient.invalidateQueries(
-          trpc.workflows.getById.queryFilter({ id: workflowId }),
-        );
-        onClose();
-      },
-    }),
-  );
+  const updateMutation = useUpdateNodeData(workflowId);
 
   function handleFormSubmit(formData: Record<string, unknown>) {
     if (!recipientNode) return;
-    updateMutation.mutate({ nodeId: recipientNode.id, data: formData });
+    updateMutation.mutate(
+      { nodeId: recipientNode.id, data: formData },
+      { onSuccess: onClose },
+    );
   }
 
   if (isLoading || !recipientNode) {
@@ -281,25 +272,12 @@ export function RecipientEditDialog({
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div
-              className={`flex size-8 items-center justify-center rounded-full ${isEmail ? 'bg-sky-500/10' : 'bg-amber-500/10'}`}
-            >
-              {isEmail ? (
-                <Mail className="size-4 text-sky-600 dark:text-sky-400" />
-              ) : (
-                <Bell className="size-4 text-amber-600 dark:text-amber-400" />
-              )}
-            </div>
-            <div>
-              <DialogTitle>Edit Recipient</DialogTitle>
-              <DialogDescription>
-                {isEmail
-                  ? 'Add email addresses to receive workflow notifications.'
-                  : 'Configure in-app notification'}
-              </DialogDescription>
-            </div>
-          </div>
+          <DialogTitle>Edit Recipient</DialogTitle>
+          <DialogDescription>
+            {isEmail
+              ? 'Add email addresses to receive workflow notifications.'
+              : 'Configure in-app notification'}
+          </DialogDescription>
         </DialogHeader>
 
         {isEmail ? (

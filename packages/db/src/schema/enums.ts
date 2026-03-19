@@ -10,6 +10,7 @@ import { pgEnum } from 'drizzle-orm/pg-core';
 // ── New node-based engine enums ───────────────────────────────────────────────
 
 export const nodeTypeEnum = pgEnum('node_type', [
+  NodeType.MANUAL_TRIGGER,
   NodeType.TRIGGER_THRESHOLD,
   NodeType.TRIGGER_VARIANCE,
   NodeType.OUTPUT_MESSAGE,

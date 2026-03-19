@@ -1,25 +1,20 @@
-import type { NodeExecutionStatus, NodeProgressMap } from '@spexs/types';
+import type { NodeExecutionStatus } from '@spexs/types';
 import type { Edge } from '@xyflow/react';
 import { useMemo } from 'react';
 import type {
+  NodeStatusMap,
   WorkflowCanvasNode,
   WorkflowConnectionRow,
   WorkflowDetail,
   WorkflowNodeRow,
 } from '../types/canvas';
 
-const ACTIVE_EDGE_STYLE = { stroke: '#6366f1', strokeWidth: 2 } as const;
-const INACTIVE_EDGE_STYLE = {
-  stroke: '#94a3b8',
-  strokeWidth: 2,
-  strokeDasharray: '6 3',
-} as const;
-
 /**
  * Maps a DB node type string to the React Flow `nodeTypes` registry key.
  * Trigger variants → 'trigger', output_ → 'message', recipient_ → 'recipient'.
  */
 function toReactFlowNodeType(nodeType: string): string {
+  if (nodeType === 'manual_trigger') return 'manual-trigger';
   if (nodeType.startsWith('trigger_')) return 'trigger';
   if (nodeType.startsWith('output_')) return 'message';
   if (nodeType.startsWith('recipient_')) return 'recipient';
@@ -60,9 +55,7 @@ function connectionRowToEdge(
     target: connection.toNodeId,
     sourceHandle: connection.fromOutput,
     targetHandle: connection.toInput,
-    type: 'smoothstep',
-    animated: isActive,
-    style: isActive ? ACTIVE_EDGE_STYLE : INACTIVE_EDGE_STYLE,
+    type: isActive ? 'workflow-animated' : 'workflow-default',
   };
 }
 
@@ -72,7 +65,7 @@ function connectionRowToEdge(
  */
 export function useWorkflowGraph(
   workflow: WorkflowDetail,
-  nodeStatuses?: NodeProgressMap,
+  nodeStatuses?: NodeStatusMap,
 ) {
   return useMemo(() => {
     const nodes = workflow.nodes.map((nodeRow) => {

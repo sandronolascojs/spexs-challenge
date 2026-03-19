@@ -4,12 +4,11 @@ import { DashboardTopNavbar } from '@/components/layout/dashboard-top-navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useTRPC } from '@/lib/trpc/client';
 import { cn } from '@/lib/utils';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Pencil, X } from 'lucide-react';
 import { useQueryState } from 'nuqs';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useUpdateWorkflow, useWorkflow } from '../hooks/http/use-workflows';
 import { workflowTabParser } from '../lib/search-params';
 import { WorkflowCanvas } from './workflow-canvas';
 import { WorkflowHistoryView } from './workflow-history-view';
@@ -23,8 +22,6 @@ function EditableWorkflowName({
   workflowId: string;
   name: string;
 }) {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -40,17 +37,7 @@ function EditableWorkflowName({
     }
   }, [isEditing]);
 
-  const updateMutation = useMutation(
-    trpc.workflows.update.mutationOptions({
-      onSuccess: () => {
-        void queryClient.invalidateQueries(
-          trpc.workflows.getById.queryFilter({ id: workflowId }),
-        );
-        void queryClient.invalidateQueries(trpc.workflows.list.queryFilter());
-        setIsEditing(false);
-      },
-    }),
-  );
+  const updateMutation = useUpdateWorkflow(workflowId);
 
   const handleSave = useCallback(() => {
     const trimmed = draft.trim();
@@ -59,7 +46,10 @@ function EditableWorkflowName({
       setIsEditing(false);
       return;
     }
-    updateMutation.mutate({ id: workflowId, name: trimmed });
+    updateMutation.mutate(
+      { id: workflowId, name: trimmed },
+      { onSuccess: () => setIsEditing(false) },
+    );
   }, [draft, name, workflowId, updateMutation]);
 
   const handleCancel = useCallback(() => {
@@ -133,16 +123,12 @@ interface WorkflowPageShellProps {
 }
 
 export function WorkflowPageShell({ workflowId }: WorkflowPageShellProps) {
-  const trpc = useTRPC();
-
   const [tab, setTab] = useQueryState(
     'tab',
     workflowTabParser.withDefault('canvas').withOptions({ shallow: false }),
   );
 
-  const { data: workflow } = useQuery(
-    trpc.workflows.getById.queryOptions({ id: workflowId }),
-  );
+  const { data: workflow } = useWorkflow(workflowId);
 
   const workflowName = workflow?.name ?? 'Loading…';
 

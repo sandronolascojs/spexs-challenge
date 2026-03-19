@@ -11,7 +11,7 @@ import {
 import { NodeStatusIndicator } from '@/components/ui/react-flow/node-status-indicator';
 import { NodeType } from '@spexs/types';
 import { Position, useReactFlow } from '@xyflow/react';
-import { Bell, Mail, Pencil, Trash2 } from 'lucide-react';
+import { Bell, Mail, Pencil, Trash2, User } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { mapExecutionStatusToIndicator } from '../../../lib/node-status';
 import { useWorkflowDialogStore } from '../../../stores/dialog-store';
@@ -22,36 +22,81 @@ import {
   parseRecipientInAppData,
 } from '../shared/parse-node-data';
 
-// ── Channel visual configuration ──────────────────────────────────────────────
+// ── Channel config (icon + subtitle only — no custom colors) ──────────────────
 
-interface ChannelVisualConfig {
-  label: string;
+interface ChannelConfig {
   Icon: LucideIcon;
-  iconClass: string;
-  titleClass: string;
+  subtitle: string;
 }
 
-const CHANNEL_CONFIG: Record<string, ChannelVisualConfig> = {
+const CHANNEL_CONFIG: Record<string, ChannelConfig> = {
   [NodeType.RECIPIENT_EMAIL]: {
-    label: 'Email Notification',
     Icon: Mail,
-    iconClass: 'bg-sky-500/10',
-    titleClass: 'text-sky-600 dark:text-sky-400',
+    subtitle: 'Email notification',
   },
   [NodeType.RECIPIENT_IN_APP]: {
-    label: 'In-App Notification',
     Icon: Bell,
-    iconClass: 'bg-amber-500/10',
-    titleClass: 'text-amber-600 dark:text-amber-400',
+    subtitle: 'In-app notification',
   },
 };
 
-const FALLBACK_CHANNEL_CONFIG: ChannelVisualConfig = {
-  label: 'Notification',
+const FALLBACK_CHANNEL_CONFIG: ChannelConfig = {
   Icon: Bell,
-  iconClass: 'bg-muted',
-  titleClass: 'text-muted-foreground',
+  subtitle: 'Notification',
 };
+
+// ── Sub-content per channel ───────────────────────────────────────────────────
+
+function EmailRecipientContent({ data }: { data: WorkflowNodeData }) {
+  const parsed = parseRecipientEmailData(data.nodeData);
+  const emails = parsed?.emails ?? [];
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        {emails.length > 1 ? `Recipients (${emails.length})` : 'Recipient'}
+      </p>
+      {emails.length === 0 ? (
+        <div className="rounded-md bg-muted/50 px-3 py-2">
+          <span className="text-xs italic text-muted-foreground">
+            No recipients set
+          </span>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {emails.map((email) => (
+            <div
+              key={email}
+              className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-1.5"
+            >
+              <Mail className="size-3 shrink-0 text-muted-foreground" />
+              <span className="truncate font-mono text-xs">{email}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InAppRecipientContent({ data }: { data: WorkflowNodeData }) {
+  const parsed = parseRecipientInAppData(data.nodeData);
+  const userId = parsed?.userId;
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        User
+      </p>
+      <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-1.5">
+        <User className="size-3 shrink-0 text-muted-foreground" />
+        <span className="truncate font-mono text-xs">
+          {userId ?? 'Current user'}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -59,25 +104,10 @@ interface RecipientNodeProps {
   data: WorkflowNodeData;
 }
 
-function getRecipientDescription(data: WorkflowNodeData): string {
-  const isEmail = data.nodeType === NodeType.RECIPIENT_EMAIL;
-
-  if (isEmail) {
-    const parsed = parseRecipientEmailData(data.nodeData);
-    if (!parsed?.emails.length) return '\u2014';
-    if (parsed.emails.length === 1) return parsed.emails[0];
-    return `${parsed.emails[0]} +${parsed.emails.length - 1}`;
-  }
-
-  const parsed = parseRecipientInAppData(data.nodeData);
-  return parsed?.userId ?? 'Current user';
-}
-
 export function RecipientNode({ data }: RecipientNodeProps) {
   const config = CHANNEL_CONFIG[data.nodeType] ?? FALLBACK_CHANNEL_CONFIG;
   const isEmail = data.nodeType === NodeType.RECIPIENT_EMAIL;
   const statusProp = mapExecutionStatusToIndicator(data.executionStatus);
-  const description = getRecipientDescription(data);
 
   const { openDialog } = useWorkflowDialogStore();
   const { deleteElements } = useReactFlow();
@@ -87,25 +117,23 @@ export function RecipientNode({ data }: RecipientNodeProps) {
       <BaseNode data-tour="workflow-recipient-node" className={NODE_CARD_CLASS}>
         <BaseHandle type="target" position={Position.Top} />
 
-        <BaseNodeHeader>
-          <div className="flex items-center gap-2">
-            <div
-              className={`flex size-5 items-center justify-center rounded ${config.iconClass}`}
-            >
-              <config.Icon className={`size-3 ${config.titleClass}`} />
-            </div>
-            <BaseNodeHeaderTitle
-              className={`text-xs uppercase tracking-wider ${config.titleClass}`}
-            >
+        <BaseNodeHeader className="gap-2.5 pb-2">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/50">
+            <config.Icon className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <BaseNodeHeaderTitle className="truncate text-sm font-semibold">
               {data.label}
             </BaseNodeHeaderTitle>
+            <p className="text-[10px] text-muted-foreground">
+              {config.subtitle}
+            </p>
           </div>
-
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
               size="icon"
-              className="size-7 hover:bg-muted"
+              className="size-7 text-muted-foreground hover:text-foreground hover:bg-muted"
               onClick={() =>
                 openDialog({
                   type: 'edit-recipient',
@@ -121,7 +149,7 @@ export function RecipientNode({ data }: RecipientNodeProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="size-7 hover:bg-destructive/10 hover:text-destructive"
+              className="size-7 text-muted-foreground hover:text-destructive hover:bg-muted"
               onClick={() => deleteElements({ nodes: [{ id: data.nodeId }] })}
             >
               <Trash2 className="size-3.5" />
@@ -129,13 +157,12 @@ export function RecipientNode({ data }: RecipientNodeProps) {
           </div>
         </BaseNodeHeader>
 
-        <BaseNodeContent>
-          <div>
-            <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              {isEmail ? 'Email' : 'User'}
-            </p>
-            <p className="truncate font-mono text-sm">{description}</p>
-          </div>
+        <BaseNodeContent className="pt-1">
+          {isEmail ? (
+            <EmailRecipientContent data={data} />
+          ) : (
+            <InAppRecipientContent data={data} />
+          )}
         </BaseNodeContent>
       </BaseNode>
     </NodeStatusIndicator>

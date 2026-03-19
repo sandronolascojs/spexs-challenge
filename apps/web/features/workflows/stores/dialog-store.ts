@@ -4,7 +4,8 @@ export type WorkflowDialogType =
   | 'edit-trigger'
   | 'edit-message'
   | 'edit-recipient'
-  | 'delete-recipient';
+  | 'delete-recipient'
+  | 'run-trigger';
 
 export interface WorkflowDialogData {
   'edit-trigger': {
@@ -21,13 +22,17 @@ export interface WorkflowDialogData {
     workflowId: string;
     recipientId: string;
   };
+  'run-trigger': {
+    workflowId: string;
+  };
 }
 
 type WorkflowDialogPayload =
   | { type: 'edit-trigger'; data: WorkflowDialogData['edit-trigger'] }
   | { type: 'edit-message'; data: WorkflowDialogData['edit-message'] }
   | { type: 'edit-recipient'; data: WorkflowDialogData['edit-recipient'] }
-  | { type: 'delete-recipient'; data: WorkflowDialogData['delete-recipient'] };
+  | { type: 'delete-recipient'; data: WorkflowDialogData['delete-recipient'] }
+  | { type: 'run-trigger'; data: WorkflowDialogData['run-trigger'] };
 
 interface WorkflowDialogState {
   // Modal dialogs
