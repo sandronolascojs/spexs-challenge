@@ -147,6 +147,23 @@ There are two ways to run the stack locally:
 | **Docker (full stack)** | Production-like testing — everything runs in containers, no Node/pnpm required |
 | **Dev mode (`pnpm dev`)** | Active development — hot reload, fast iteration |
 
+### Docker Compose Profiles
+
+Two profiles are available. Pass `--profile <name>` to select which services start:
+
+| Profile | Services started | Use when |
+|---|---|---|
+| `infra` | `db`, `redis` | Dev mode — spin up only the infrastructure, run the apps locally with `pnpm dev` |
+| `full` | `db`, `redis`, `api`, `web` | Full containerised stack — no Node/pnpm required on the host |
+
+```bash
+# Infrastructure only (for dev mode)
+docker compose --profile infra up -d
+
+# Full stack (production-like)
+docker compose --profile full up -d --build
+```
+
 ---
 
 ## Option A — Full Docker Stack (production-like)
