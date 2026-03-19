@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { DashboardModule } from '../dashboard/dashboard.module';
 import { EventsModule } from '../events/events.module';
 import { ExecutionsModule } from '../executions/executions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -8,6 +9,7 @@ import { TrpcService } from './trpc.service';
 
 @Module({
   imports: [
+    DashboardModule,
     WorkflowsModule,
     ExecutionsModule,
     EventsModule,

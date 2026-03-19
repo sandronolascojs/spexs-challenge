@@ -2,25 +2,23 @@
 .git
 .gitignore
 
-# Local env files — never baked into images; injected at runtime via docker-compose
+# Local env files — all env vars are declared in docker-compose.yml
 .env
 .env.*
 **/.env
 **/.env.*
 
-# Dependencies — reinstalled inside the build
+# Dependencies — installed inside the container, not copied from host
 node_modules
 **/node_modules
 
-# Build outputs — rebuilt inside the build
+# Build outputs
 apps/web/.next
 apps/api/dist
 packages/types/dist
 packages/db/dist
 
-# Test coverage
-**/coverage
-
 # Editor / OS
 .DS_Store
 *.log
+.turbo

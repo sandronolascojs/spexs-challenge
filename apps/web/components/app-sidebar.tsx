@@ -1,6 +1,11 @@
 'use client';
 
-import { BellRing, GalleryVerticalEnd, GitBranch } from 'lucide-react';
+import {
+  BellRing,
+  GalleryVerticalEnd,
+  GitBranch,
+  LayoutDashboard,
+} from 'lucide-react';
 
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -15,6 +20,11 @@ import {
 import { AlertEventStatus } from '@spexs/types';
 
 const navMain = [
+  {
+    title: 'Dashboard',
+    url: '/',
+    icon: LayoutDashboard,
+  },
   {
     title: 'Workflows',
     url: '/workflows',

@@ -1,6 +1,8 @@
 import { type INestApplication, Injectable, Logger } from '@nestjs/common';
 import * as trpcExpress from '@trpc/server/adapters/express';
 import { z } from 'zod';
+import { buildDashboardRouter } from '../dashboard/dashboard.router';
+import { DashboardService } from '../dashboard/dashboard.service';
 import { buildEventsRouter } from '../events/events.router';
 import { EventsService } from '../events/events.service';
 import { buildExecutionsRouter } from '../executions/executions.router';
@@ -19,6 +21,7 @@ export class TrpcRouter {
 
   constructor(
     private readonly trpc: TrpcService,
+    private readonly dashboardService: DashboardService,
     private readonly workflowsService: WorkflowsService,
     private readonly executionsService: ExecutionsService,
     private readonly eventsService: EventsService,
@@ -39,6 +42,7 @@ export class TrpcRouter {
         return { user: ctx.session.user };
       }),
 
+      dashboard: buildDashboardRouter(this.trpc, this.dashboardService),
       workflows: buildWorkflowsRouter(this.trpc, this.workflowsService),
       executions: buildExecutionsRouter(this.trpc, this.executionsService),
       events: buildEventsRouter(this.trpc, this.eventsService),
