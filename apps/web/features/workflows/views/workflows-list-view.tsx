@@ -14,6 +14,7 @@ import {
   WORKFLOW_SORT_OPTIONS,
   type WorkflowPaginationState,
 } from '../lib/pagination';
+import { WORKFLOW_MODES } from '../lib/search-params';
 
 function parseWorkflowSortField(
   sortBy: string,
@@ -115,7 +116,7 @@ export function WorkflowsListView() {
         error={layoutError}
         headerActions={
           <Button asChild size="sm">
-            <Link href="/workflows/new?mode=scratch">
+            <Link href={`/workflows/new?mode=${WORKFLOW_MODES.SCRATCH}`}>
               <Plus className="mr-2 size-4" />
               Create Empty
             </Link>

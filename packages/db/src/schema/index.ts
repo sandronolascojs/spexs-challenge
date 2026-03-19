@@ -20,3 +20,6 @@ export * from './executions';
 
 // Events & Idempotency
 export * from './events';
+
+// Notifications
+export * from './notifications';

@@ -1,24 +1,30 @@
 import { WorkflowPageShell } from '@/features/workflows/components/workflow-page-shell';
+import { workflowDetailSearchParamsCache } from '@/features/workflows/lib/search-params';
 import { isAuthenticated } from '@/lib/auth/guards';
 import { getQueryClient, trpc } from '@/lib/trpc/server';
-import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE } from '@spexs/types';
 import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
 import { redirect } from 'next/navigation';
 
 interface PageProps {
   params: Promise<{ workflowId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function WorkflowPage({ params }: PageProps) {
+export default async function WorkflowPage({
+  params,
+  searchParams,
+}: PageProps) {
   const { workflowId } = await params;
 
   const authenticated = await isAuthenticated();
   if (!authenticated) redirect('/login');
 
+  const { page, pageSize, status } = workflowDetailSearchParamsCache.parse(
+    await searchParams,
+  );
+
   const queryClient = getQueryClient();
 
-  // Await prefetches so errors are caught server-side and never dehydrated
-  // as pending queries — which would cause client-side rejection errors.
   await Promise.allSettled([
     queryClient.prefetchQuery(
       trpc.workflows.getById.queryOptions({ id: workflowId }),
@@ -26,8 +32,9 @@ export default async function WorkflowPage({ params }: PageProps) {
     queryClient.prefetchQuery(
       trpc.events.list.queryOptions({
         workflowId,
-        page: DEFAULT_PAGE,
-        pageSize: DEFAULT_PAGE_SIZE,
+        page,
+        pageSize,
+        ...(status ? { status } : {}),
       }),
     ),
     queryClient.prefetchQuery(

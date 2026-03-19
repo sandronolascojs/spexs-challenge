@@ -26,6 +26,7 @@ import {
   SidebarMenuSkeleton,
   useSidebar,
 } from '@/components/ui/sidebar';
+import { WORKFLOW_TABS } from '@/features/workflows/lib/search-params';
 import { useTRPC } from '@/lib/trpc/client';
 import { useQuery } from '@tanstack/react-query';
 
@@ -92,7 +93,9 @@ export function NavWorkflows() {
         {workflows.map((workflow) => (
           <SidebarMenuItem key={workflow.id}>
             <SidebarMenuButton asChild>
-              <Link href={`/workflows/${workflow.id}/canvas`}>
+              <Link
+                href={`/workflows/${workflow.id}?tab=${WORKFLOW_TABS.CANVAS}`}
+              >
                 <GitBranch />
                 <span className="truncate">{workflow.name}</span>
                 {workflow.isActive && (
@@ -113,7 +116,9 @@ export function NavWorkflows() {
                 align={isMobile ? 'end' : 'start'}
               >
                 <DropdownMenuItem asChild>
-                  <Link href={`/workflows/${workflow.id}/canvas`}>
+                  <Link
+                    href={`/workflows/${workflow.id}?tab=${WORKFLOW_TABS.CANVAS}`}
+                  >
                     <Folder className="text-muted-foreground" />
                     <span>View Workflow</span>
                   </Link>

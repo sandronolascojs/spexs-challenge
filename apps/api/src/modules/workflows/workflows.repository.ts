@@ -30,15 +30,16 @@ export class WorkflowsRepository {
 
     if (!workflow) return null;
 
-    const nodes = await this.database.db
-      .select()
-      .from(workflowNodes)
-      .where(eq(workflowNodes.workflowId, id));
-
-    const connections = await this.database.db
-      .select()
-      .from(workflowConnections)
-      .where(eq(workflowConnections.workflowId, id));
+    const [nodes, connections] = await Promise.all([
+      this.database.db
+        .select()
+        .from(workflowNodes)
+        .where(eq(workflowNodes.workflowId, id)),
+      this.database.db
+        .select()
+        .from(workflowConnections)
+        .where(eq(workflowConnections.workflowId, id)),
+    ]);
 
     return { ...workflow, nodes, connections };
   }
@@ -67,18 +68,19 @@ export class WorkflowsRepository {
       orderByColumn,
     );
 
-    const userWorkflows = await this.database.db
-      .select()
-      .from(workflows)
-      .where(baseWhereClause)
-      .orderBy(orderByClause)
-      .limit(query.pageSize)
-      .offset(offset);
-
-    const [totalResult] = await this.database.db
-      .select({ total: sql<number>`count(*)` })
-      .from(workflows)
-      .where(baseWhereClause);
+    const [userWorkflows, [totalResult]] = await Promise.all([
+      this.database.db
+        .select()
+        .from(workflows)
+        .where(baseWhereClause)
+        .orderBy(orderByClause)
+        .limit(query.pageSize)
+        .offset(offset),
+      this.database.db
+        .select({ total: sql<number>`count(*)` })
+        .from(workflows)
+        .where(baseWhereClause),
+    ]);
 
     const total = Number(totalResult?.total ?? 0);
     const meta = calculatePaginationMeta(query.page, query.pageSize, total);
@@ -303,12 +305,26 @@ export class WorkflowsRepository {
   }
 
   /**
-   * Load connections for a workflow (used for cycle detection).
+   * Find connections for a workflow (used for cycle detection).
    */
   async findConnectionsByWorkflowId(workflowId: string) {
     return this.database.db
       .select()
       .from(workflowConnections)
       .where(eq(workflowConnections.workflowId, workflowId));
+  }
+
+  /**
+   * Lightweight ownership check — fetches only the createdBy column
+   * instead of loading the full workflow graph (nodes + connections).
+   */
+  async findOwnerById(workflowId: string) {
+    const [workflow] = await this.database.db
+      .select({ id: workflows.id, createdBy: workflows.createdBy })
+      .from(workflows)
+      .where(eq(workflows.id, workflowId))
+      .limit(1);
+
+    return workflow ?? null;
   }
 }

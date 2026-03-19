@@ -1,13 +1,16 @@
 import type { NodeExecutor, WorkflowContext } from '../executor-types';
+import { isRecord } from '../type-guards';
 
 /**
- * Creates an in-app notification for the user.
- * Currently logs the action — replace with actual notification service.
+ * Creates a real in-app notification for the triggering user.
+ * Reads the rendered message from context (set by the OutputMessage node)
+ * and stores it via the NotificationsService.
  */
 export const recipientInAppExecutor: NodeExecutor = async ({
   node,
   context,
   userId,
+  services,
 }) => {
   const messageEntry = context.message;
   const messageText =
@@ -18,10 +21,22 @@ export const recipientInAppExecutor: NodeExecutor = async ({
       ? messageEntry.text
       : '';
 
-  // TODO: integrate with actual in-app notification service
-  console.log(
-    `[RecipientInApp] Notifying user ${userId} (node ${node.id}): ${messageText}`,
-  );
+  const triggerEntry = context.trigger;
+  const workflowId = node.workflowId;
+
+  // Extract event id from context if the processor attached it
+  const eventId =
+    isRecord(context) && typeof context.activeEventId === 'string'
+      ? context.activeEventId
+      : undefined;
+
+  await services.notifications.create({
+    userId,
+    workflowId,
+    eventId,
+    title: 'Alert triggered',
+    message: messageText || 'A workflow alert condition was met.',
+  });
 
   const output: WorkflowContext = {
     notification: {

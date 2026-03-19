@@ -35,6 +35,7 @@ export const nodeExecutionStatusEnum = pgEnum('node_execution_status', [
 
 export const alertEventStatusEnum = pgEnum('alert_event_status', [
   AlertEventStatus.OPEN,
+  AlertEventStatus.SNOOZED,
   AlertEventStatus.RESOLVED,
 ]);
 

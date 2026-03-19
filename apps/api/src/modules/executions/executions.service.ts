@@ -1,5 +1,9 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  type OnApplicationBootstrap,
+} from '@nestjs/common';
 import {
   type AddStepCommentInput,
   ExecutionStatus,
@@ -7,7 +11,7 @@ import {
   NodeExecutionStatus,
 } from '@spexs/types';
 import { TRPCError } from '@trpc/server';
-import { Queue } from 'bullmq';
+import type { Queue } from 'bullmq';
 import { topologicalSortNodes } from '../workflows/lib/topological-sort';
 import type { ExecutionJobData } from './executions.processor';
 import { ExecutionsRepository } from './executions.repository';

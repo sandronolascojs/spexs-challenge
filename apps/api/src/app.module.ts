@@ -1,5 +1,6 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { DatabaseModule, type DatabaseModuleOptions } from '@spexs/db';
 import { AuthModule } from '@thallesp/nestjs-better-auth';
 import { auth } from './lib/auth';
@@ -14,6 +15,7 @@ import { TrpcModule } from './modules/trpc/trpc.module';
   imports: [
     EnvModule,
     SecurityModule,
+    ScheduleModule.forRoot(),
     DatabaseModule.forRootAsync({
       inject: [EnvService],
       useFactory: (env: EnvService): DatabaseModuleOptions => ({

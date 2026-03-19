@@ -4,9 +4,11 @@ import { DashboardTopNavbar } from '@/components/layout/dashboard-top-navbar';
 import { Button } from '@/components/ui/button';
 import { WorkflowTemplate, createWorkflowSchema } from '@spexs/types';
 import { GitBranch, Plus, Sigma } from 'lucide-react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import { useQueryState } from 'nuqs';
 import { useCallback, useEffect, useRef } from 'react';
 import { useCreateWorkflow } from '../hooks/http/use-workflows';
+import { WORKFLOW_MODES, workflowModeParser } from '../lib/search-params';
 
 // ── Template definitions ──────────────────────────────────────────────────────
 
@@ -37,8 +39,6 @@ const TEMPLATES: readonly TemplateConfig[] = [
     icon: Sigma,
   },
 ] as const;
-
-const SCRATCH_MODE = 'scratch';
 
 // ── Template card ─────────────────────────────────────────────────────────────
 
@@ -88,7 +88,10 @@ function TemplateCard({
 
 export function CreateWorkflowView() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const [mode] = useQueryState(
+    'mode',
+    workflowModeParser.withOptions({ shallow: false }),
+  );
   const hasAutoCreatedRef = useRef(false);
 
   const createMutation = useCreateWorkflow();
@@ -118,12 +121,10 @@ export function CreateWorkflowView() {
   }, [createMutation, router]);
 
   useEffect(() => {
-    const mode = searchParams.get('mode');
-    if (mode !== SCRATCH_MODE || hasAutoCreatedRef.current) return;
-
+    if (mode !== WORKFLOW_MODES.SCRATCH || hasAutoCreatedRef.current) return;
     hasAutoCreatedRef.current = true;
     handleScratch();
-  }, [searchParams, handleScratch]);
+  }, [mode, handleScratch]);
 
   return (
     <>
@@ -135,7 +136,6 @@ export function CreateWorkflowView() {
       />
 
       <div className="mx-auto w-full max-w-3xl space-y-4 p-6">
-        {/* Header */}
         <div>
           <h1 className="text-xl font-semibold tracking-tight">New Workflow</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -143,7 +143,6 @@ export function CreateWorkflowView() {
           </p>
         </div>
 
-        {/* Template cards */}
         <div className="grid gap-4 sm:grid-cols-2">
           {TEMPLATES.map((config) => (
             <TemplateCard
@@ -155,7 +154,6 @@ export function CreateWorkflowView() {
           ))}
         </div>
 
-        {/* From scratch */}
         <button
           type="button"
           disabled={createMutation.isPending}

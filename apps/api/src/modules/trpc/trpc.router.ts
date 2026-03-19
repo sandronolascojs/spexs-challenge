@@ -5,6 +5,8 @@ import { buildEventsRouter } from '../events/events.router';
 import { EventsService } from '../events/events.service';
 import { buildExecutionsRouter } from '../executions/executions.router';
 import { ExecutionsService } from '../executions/executions.service';
+import { buildNotificationsRouter } from '../notifications/notifications.router';
+import { NotificationsService } from '../notifications/notifications.service';
 import { buildWorkflowsRouter } from '../workflows/workflows.router';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { createTrpcContext } from './trpc.context';
@@ -20,6 +22,7 @@ export class TrpcRouter {
     private readonly workflowsService: WorkflowsService,
     private readonly executionsService: ExecutionsService,
     private readonly eventsService: EventsService,
+    private readonly notificationsService: NotificationsService,
   ) {
     this.appRouter = this.buildRouter();
   }
@@ -39,6 +42,10 @@ export class TrpcRouter {
       workflows: buildWorkflowsRouter(this.trpc, this.workflowsService),
       executions: buildExecutionsRouter(this.trpc, this.executionsService),
       events: buildEventsRouter(this.trpc, this.eventsService),
+      notifications: buildNotificationsRouter(
+        this.trpc,
+        this.notificationsService,
+      ),
     });
   }
 

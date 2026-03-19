@@ -173,6 +173,12 @@ function VarianceRunForm({ formId, config, onSubmit }: VarianceRunFormProps) {
 
 const RUN_FORM_ID = 'trigger-run-form';
 
+const TRIGGER_NODE_TYPES = new Set([
+  NodeType.MANUAL_TRIGGER,
+  NodeType.TRIGGER_THRESHOLD,
+  NodeType.TRIGGER_VARIANCE,
+]);
+
 interface TriggerRunModalProps {
   workflowId: string;
   onClose: () => void;
@@ -204,15 +210,8 @@ export function TriggerRunModal({ workflowId, onClose }: TriggerRunModalProps) {
     [executeMutation, workflowId, setActiveExecutionId, onClose],
   );
 
-  const TRIGGER_NODE_TYPES: string[] = [
-    NodeType.MANUAL_TRIGGER,
-    NodeType.TRIGGER_THRESHOLD,
-    NodeType.TRIGGER_VARIANCE,
-  ];
-
-  // Identify the trigger node (first node in topological order or by type)
   const triggerNode = workflow?.nodes.find((n) =>
-    TRIGGER_NODE_TYPES.includes(n.type),
+    TRIGGER_NODE_TYPES.has(n.type),
   );
 
   const isManual = triggerNode?.type === NodeType.MANUAL_TRIGGER;
@@ -281,13 +280,13 @@ export function TriggerRunModal({ workflowId, onClose }: TriggerRunModalProps) {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-full bg-primary/10">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
               {icon}
             </div>
-            <div>
+            <div className="min-w-0">
               <DialogTitle>{title}</DialogTitle>
               <DialogDescription>{description}</DialogDescription>
             </div>
@@ -310,23 +309,14 @@ export function TriggerRunModal({ workflowId, onClose }: TriggerRunModalProps) {
           />
         )}
 
-        {/* Unconfigured trigger node — config is incomplete */}
         {((isThreshold && !thresholdConfig) ||
           (isVariance && !varianceConfig)) && (
-          <p className="py-4 text-sm text-muted-foreground italic">
+          <p className="py-4 text-sm italic text-muted-foreground">
             The trigger node is not fully configured. Please edit it first.
           </p>
         )}
 
-        <DialogFooter>
-          <Button
-            variant="outline"
-            type="button"
-            onClick={onClose}
-            disabled={executeMutation.isPending}
-          >
-            Cancel
-          </Button>
+        <DialogFooter showCloseButton>
           <Button
             type="submit"
             form={RUN_FORM_ID}
@@ -337,9 +327,9 @@ export function TriggerRunModal({ workflowId, onClose }: TriggerRunModalProps) {
             }
           >
             {executeMutation.isPending ? (
-              <Loader2 className="mr-2 size-3.5 animate-spin" />
+              <Loader2 className="size-3.5 animate-spin" />
             ) : (
-              <Play className="mr-2 size-3.5" />
+              <Play className="size-3.5" />
             )}
             {executeMutation.isPending ? 'Running…' : 'Run Workflow'}
           </Button>

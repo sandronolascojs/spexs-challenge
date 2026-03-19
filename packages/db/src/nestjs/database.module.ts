@@ -30,6 +30,7 @@ export class DatabaseModule {
     options: DatabaseModuleAsyncOptions<TDeps>,
   ): DynamicModule {
     return {
+      global: true,
       module: DatabaseModule,
       providers: [
         {

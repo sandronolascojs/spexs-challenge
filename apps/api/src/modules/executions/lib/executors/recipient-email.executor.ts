@@ -1,4 +1,4 @@
-import { type WorkflowContext } from '@spexs/types';
+import type { WorkflowContext } from '@spexs/types';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import type { NodeExecutor } from '../executor-types';

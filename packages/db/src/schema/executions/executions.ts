@@ -43,6 +43,13 @@ export const executions = pgTable(
     index('executions_workflow_id_idx').on(t.workflowId),
     index('executions_status_idx').on(t.status),
     index('executions_triggered_by_idx').on(t.triggeredBy),
+    /** Covers findActiveExecution(workflowId, status=RUNNING) */
+    index('executions_workflow_id_status_idx').on(t.workflowId, t.status),
+    /** Covers findLastExecution + findByWorkflowId ORDER BY started_at DESC */
+    index('executions_workflow_id_started_at_idx').on(
+      t.workflowId,
+      t.startedAt,
+    ),
   ],
 );
 

@@ -10,22 +10,21 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Textarea } from '@/components/ui/textarea';
+import { ResolveEventDialog } from '@/features/events/components/resolve-event-dialog';
+import { SnoozeEventDialog } from '@/features/events/components/snooze-event-dialog';
 import {
   AlertEventStatus,
   ExecutionStatus,
   NodeExecutionStatus,
 } from '@spexs/types';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import {
   AlertCircle,
   AlertTriangle,
@@ -34,24 +33,27 @@ import {
   History,
   Loader2,
   MessageSquare,
+  Moon,
   RotateCcw,
+  User,
 } from 'lucide-react';
 import { useQueryStates } from 'nuqs';
 import { useState } from 'react';
-import { useAlertEvents, useResolveAlertEvent } from '../hooks/http/use-events';
+import { useAlertEvents, useEventComments } from '../hooks/http/use-events';
 import {
   useExecutionDetails,
   useRetryExecution,
 } from '../hooks/http/use-executions';
-import { historyPageParser, historyPageSizeParser } from '../lib/search-params';
+import {
+  historyPageParser,
+  historyPageSizeParser,
+  historyStatusParser,
+} from '../lib/search-params';
 import { NodeExecutionDetail } from './node-execution-detail';
 import { StepCommentsSheet } from './step-comments-sheet';
 
 const HISTORY_PARAM_OPTIONS = { shallow: false } as const;
-
-interface WorkflowHistoryViewProps {
-  workflowId: string;
-}
+const ALL_STATUS = 'all' as const;
 
 // ── Status config ─────────────────────────────────────────────────────────────
 
@@ -61,6 +63,13 @@ const EVENT_STATUS_CONFIG = {
     icon: AlertTriangle,
     dotClass: 'bg-destructive',
     badgeClass: 'border-destructive/30 bg-destructive/10 text-destructive',
+  },
+  [AlertEventStatus.SNOOZED]: {
+    label: 'Snoozed',
+    icon: Moon,
+    dotClass: 'bg-amber-500',
+    badgeClass:
+      'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
   },
   [AlertEventStatus.RESOLVED]: {
     label: 'Resolved',
@@ -82,79 +91,37 @@ const STEP_STATUS_CLASS: Record<NodeExecutionStatus, string> = {
   [NodeExecutionStatus.SKIPPED]: 'bg-muted text-muted-foreground border-border',
 };
 
-// ── Resolve dialog ────────────────────────────────────────────────────────────
+// ── Resolution comments ───────────────────────────────────────────────────────
 
-function ResolveEventDialog({
-  eventId,
-  workflowId,
-  onResolve,
-}: {
-  eventId: string;
-  workflowId: string;
-  onResolve: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [comment, setComment] = useState('');
+function ResolutionComments({ eventId }: { eventId: string }) {
+  const { data: comments, isLoading } = useEventComments(eventId);
 
-  const mutation = useResolveAlertEvent(workflowId);
+  if (isLoading || !comments?.length) return null;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
-          <CheckCircle2 className="size-3.5 text-emerald-500" />
-          Resolve
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Resolve Alert</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="resolve-comment"
-              className="text-xs font-medium text-muted-foreground"
-            >
-              Resolution note (optional)
-            </Label>
-            <Textarea
-              id="resolve-comment"
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="Describe how this alert was resolved…"
-              className="resize-none"
-              rows={3}
-            />
+    <div className="mt-3 space-y-2 border-t border-border/40 pt-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Resolution notes
+      </p>
+      {comments.map((c) => (
+        <div key={c.id} className="flex gap-2">
+          <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-muted">
+            <User className="size-3 text-muted-foreground" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <span className="text-xs font-medium">{c.userName}</span>
+              <span className="text-[10px] text-muted-foreground">
+                {formatDistanceToNow(new Date(c.createdAt), {
+                  addSuffix: true,
+                })}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">{c.content}</p>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            disabled={mutation.isPending}
-            onClick={() =>
-              mutation.mutate(
-                { eventId, comment },
-                {
-                  onSuccess: () => {
-                    setOpen(false);
-                    setComment('');
-                    onResolve();
-                  },
-                },
-              )
-            }
-          >
-            {mutation.isPending && (
-              <Loader2 className="size-3.5 animate-spin" />
-            )}
-            {mutation.isPending ? 'Resolving…' : 'Mark as Resolved'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      ))}
+    </div>
   );
 }
 
@@ -166,7 +133,7 @@ interface SelectedStep {
   nodeType: string;
 }
 
-// ── Step list + retry — shows all workflow nodes and the authoritative retry button ──
+// ── Step list + retry ─────────────────────────────────────────────────────────
 
 function EventSteps({
   executionId,
@@ -178,7 +145,6 @@ function EventSteps({
   isRetrying: boolean;
 }) {
   const [selectedStep, setSelectedStep] = useState<SelectedStep | null>(null);
-
   const { data: details, isLoading } = useExecutionDetails(executionId);
 
   if (isLoading) {
@@ -195,13 +161,10 @@ function EventSteps({
     (details?.nodeExecutions ?? []).map((ne) => [ne.nodeId, ne]),
   );
 
-  // Retry is only valid when the execution itself is in FAILED state.
-  // We read this from the live execution row, not from stale stepLogs on the event.
   const canRetry = details?.status === ExecutionStatus.FAILED;
 
   return (
     <>
-      {/* Retry banner — shown at the top of the steps panel when execution is FAILED */}
       {canRetry && (
         <div className="flex items-center justify-between border-b border-border/40 py-2">
           <p className="text-xs text-muted-foreground">
@@ -319,7 +282,7 @@ function EventSteps({
 function EventCard({
   event,
   workflowId,
-  onResolve,
+  onAction,
   onRetry,
   isRetrying,
 }: {
@@ -330,33 +293,35 @@ function EventCard({
     triggerData: Record<string, unknown>;
     createdAt: Date | string;
     resolvedAt?: Date | string | null;
+    snoozedUntil?: Date | string | null;
   };
   workflowId: string;
-  onResolve: () => void;
+  onAction: () => void;
   onRetry: (executionId: string) => void;
   isRetrying: boolean;
 }) {
   const statusConfig =
     EVENT_STATUS_CONFIG[event.status] ??
     EVENT_STATUS_CONFIG[AlertEventStatus.OPEN];
-
   const StatusIcon = statusConfig.icon;
-
   const trigData =
     Object.keys(event.triggerData).length > 0 ? event.triggerData : null;
+  const isActionable =
+    event.status === AlertEventStatus.OPEN ||
+    event.status === AlertEventStatus.SNOOZED;
 
   return (
     <div className="overflow-hidden rounded-xl border border-border/60 bg-card transition-colors hover:border-border">
       {/* Card header */}
       <div className="flex items-start justify-between gap-3 p-4">
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
           <div
             className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ${statusConfig.badgeClass}`}
           >
             <StatusIcon className="size-4" />
           </div>
 
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold">Alert Triggered</span>
               <Badge
@@ -379,6 +344,13 @@ function EventCard({
                   {format(new Date(event.resolvedAt), 'MMM d, yyyy HH:mm')}
                 </span>
               )}
+              {event.snoozedUntil &&
+                event.status === AlertEventStatus.SNOOZED && (
+                  <span className="flex items-center gap-1 text-amber-500 dark:text-amber-400">
+                    <Moon className="size-3" />
+                    Until {format(new Date(event.snoozedUntil), 'MMM d, HH:mm')}
+                  </span>
+                )}
             </div>
 
             {trigData && (
@@ -393,22 +365,26 @@ function EventCard({
                 </span>
               </div>
             )}
+
+            {/* Resolution comments — only shown when resolved */}
+            {event.status === AlertEventStatus.RESOLVED && (
+              <ResolutionComments eventId={event.id} />
+            )}
           </div>
         </div>
 
-        {/* Only the Resolve button lives in the card header; Retry lives inside EventSteps */}
-        {event.status === AlertEventStatus.OPEN && (
+        {/* Actions */}
+        {isActionable && (
           <div className="flex shrink-0 items-center gap-2">
-            <ResolveEventDialog
-              eventId={event.id}
-              workflowId={workflowId}
-              onResolve={onResolve}
-            />
+            {event.status === AlertEventStatus.OPEN && (
+              <SnoozeEventDialog eventId={event.id} onSnooze={onAction} />
+            )}
+            <ResolveEventDialog eventId={event.id} onResolve={onAction} />
           </div>
         )}
       </div>
 
-      {/* Steps — shown whenever we have an executionId */}
+      {/* Steps */}
       {event.executionId && (
         <>
           <Separator />
@@ -427,9 +403,17 @@ function EventCard({
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 
+interface WorkflowHistoryViewProps {
+  workflowId: string;
+}
+
 export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
-  const [{ page, pageSize }, setParams] = useQueryStates(
-    { page: historyPageParser, pageSize: historyPageSizeParser },
+  const [{ page, pageSize, status }, setParams] = useQueryStates(
+    {
+      page: historyPageParser,
+      pageSize: historyPageSizeParser,
+      status: historyStatusParser,
+    },
     HISTORY_PARAM_OPTIONS,
   );
 
@@ -437,6 +421,7 @@ export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
     workflowId,
     page,
     pageSize,
+    status: status ?? undefined,
   });
 
   const retryMutation = useRetryExecution(workflowId);
@@ -461,58 +446,81 @@ export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
   const events = data?.items ?? [];
   const meta = data?.meta;
 
-  if (events.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-4 py-16 text-center">
-        <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-muted">
-          <History className="size-6 text-muted-foreground" />
-        </div>
-        <h3 className="mb-1 text-sm font-semibold">No events yet</h3>
-        <p className="max-w-xs text-xs text-muted-foreground">
-          Triggered alerts will appear here. Simulate the workflow to generate
-          an event.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-3">
-      {events.map((event) => (
-        <EventCard
-          key={event.id}
-          event={event}
-          workflowId={workflowId}
-          onResolve={() => void refetch()}
-          onRetry={(executionId) => retryMutation.mutate({ executionId })}
-          isRetrying={retryMutation.isPending}
-        />
-      ))}
+      {/* Status filter */}
+      <div className="flex items-center gap-2">
+        <Select
+          value={status ?? ALL_STATUS}
+          onValueChange={(v) => {
+            void setParams({
+              status: (v === ALL_STATUS ? null : v) as AlertEventStatus | null,
+              page: 1,
+            });
+          }}
+        >
+          <SelectTrigger className="w-40 h-8 text-xs">
+            <SelectValue placeholder="All statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_STATUS}>All statuses</SelectItem>
+            <SelectItem value={AlertEventStatus.OPEN}>Open</SelectItem>
+            <SelectItem value={AlertEventStatus.SNOOZED}>Snoozed</SelectItem>
+            <SelectItem value={AlertEventStatus.RESOLVED}>Resolved</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
-      {meta && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between pt-1">
-          <p className="text-xs text-muted-foreground">
-            Page {meta.page} of {meta.totalPages} · {meta.total} events
-          </p>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={page <= 1}
-              onClick={() => setParams({ page: page - 1 })}
-            >
-              Previous
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={page >= meta.totalPages}
-              onClick={() => setParams({ page: page + 1 })}
-            >
-              Next
-            </Button>
+      {events.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-4 py-16 text-center">
+          <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-muted">
+            <History className="size-6 text-muted-foreground" />
           </div>
+          <h3 className="mb-1 text-sm font-semibold">No events yet</h3>
+          <p className="max-w-xs text-xs text-muted-foreground">
+            Triggered alerts will appear here. Simulate the workflow to generate
+            an event.
+          </p>
         </div>
+      ) : (
+        <>
+          {events.map((event) => (
+            <EventCard
+              key={event.id}
+              event={event}
+              workflowId={workflowId}
+              onAction={() => void refetch()}
+              onRetry={(executionId) => retryMutation.mutate({ executionId })}
+              isRetrying={retryMutation.isPending}
+            />
+          ))}
+
+          {meta && meta.totalPages > 1 && (
+            <div className="flex items-center justify-between pt-1">
+              <p className="text-xs text-muted-foreground">
+                Page {meta.page} of {meta.totalPages} · {meta.total} events
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page <= 1}
+                  onClick={() => void setParams({ page: page - 1 })}
+                >
+                  Previous
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page >= meta.totalPages}
+                  onClick={() => void setParams({ page: page + 1 })}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

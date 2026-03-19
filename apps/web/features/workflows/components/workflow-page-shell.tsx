@@ -123,18 +123,30 @@ interface WorkflowPageShellProps {
 }
 
 export function WorkflowPageShell({ workflowId }: WorkflowPageShellProps) {
+  const [isMounted, setIsMounted] = useState(false);
   const [tab, setTab] = useQueryState(
     'tab',
     workflowTabParser.withDefault('canvas').withOptions({ shallow: false }),
   );
 
-  const { data: workflow } = useWorkflow(workflowId);
+  const { data: workflow, isLoading } = useWorkflow(workflowId);
 
-  const workflowName = workflow?.name ?? 'Loading…';
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  const workflowName = isLoading
+    ? 'Loading…'
+    : (workflow?.name ?? 'Workflow not found');
+
+  // Suppress rendering until the client has mounted so the tab value from
+  // the URL is known. This prevents a Radix ID mismatch between SSR
+  // (default tab) and hydration (URL tab).
+  const activeTab = isMounted ? tab : 'canvas';
 
   return (
     <Tabs
-      value={tab}
+      value={activeTab}
       onValueChange={(value) => setTab(value as typeof tab)}
       className="flex h-dvh flex-col overflow-hidden"
     >

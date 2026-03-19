@@ -28,11 +28,19 @@ export const alertEvents = pgTable(
     }),
     createdAt: createdAtColumn(),
     resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
+    /** Set when status = SNOOZED. Null for OPEN and RESOLVED events. */
+    snoozedUntil: timestamp('snoozed_until', {
+      withTimezone: true,
+      mode: 'date',
+    }),
   },
   (t) => [
     index('alert_events_workflow_id_idx').on(t.workflowId),
     index('alert_events_status_idx').on(t.status),
     index('alert_events_execution_id_idx').on(t.executionId),
+    index('alert_events_snoozed_until_idx').on(t.snoozedUntil),
+    /** Covers findOpenAlertEvent(workflowId, status IN [OPEN, SNOOZED]) */
+    index('alert_events_workflow_id_status_idx').on(t.workflowId, t.status),
   ],
 );
 

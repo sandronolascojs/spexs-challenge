@@ -8,6 +8,20 @@
       "when": 1773896520593,
       "tag": "0000_magenta_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1773897905235,
+      "tag": "0001_pretty_dark_beast",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773902264780,
+      "tag": "0002_broken_master_chief",
+      "breakpoints": true
     }
   ]
 }

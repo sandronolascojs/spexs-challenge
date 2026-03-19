@@ -12,6 +12,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from '@/components/ui/sidebar';
+import { AlertEventStatus } from '@spexs/types';
 
 const navMain = [
   {
@@ -29,7 +30,7 @@ const navMain = [
     url: '/events',
     icon: BellRing,
     items: [
-      { title: 'Open', url: '/events?status=open' },
+      { title: 'Open', url: `/events?status=${AlertEventStatus.OPEN}` },
       { title: 'History', url: '/events' },
     ],
   },

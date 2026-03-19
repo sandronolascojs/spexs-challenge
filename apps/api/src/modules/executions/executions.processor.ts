@@ -7,8 +7,9 @@ import {
   NodeExecutionStatus,
   type WorkflowContext,
 } from '@spexs/types';
-import { Job } from 'bullmq';
+import type { Job } from 'bullmq';
 import { EmailService } from '../email/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ExecutionsRepository } from './executions.repository';
 import { getNodeExecutor } from './lib/executor-registry';
 import type { ExecutorServices } from './lib/executor-types';
@@ -68,19 +69,30 @@ export class ExecutionsProcessor extends WorkerHost {
   constructor(
     private readonly repository: ExecutionsRepository,
     emailService: EmailService,
+    notificationsService: NotificationsService,
   ) {
     super();
-    this.services = { email: emailService };
+    this.services = {
+      email: emailService,
+      notifications: notificationsService,
+    };
   }
 
   async process(job: Job<ExecutionJobData>) {
+    return this.executeWorkflow(job.data);
+  }
+
+  /**
+   * Core execution logic extracted for testability (avoids mocking bullmq Job).
+   */
+  async executeWorkflow(data: ExecutionJobData) {
     const {
       executionId,
       sortedNodes,
       nodeExecutionIdByNodeId,
       triggerData,
       userId,
-    } = job.data;
+    } = data;
 
     let context: WorkflowContext = { triggerData };
     let isFirstNode = true;
@@ -279,13 +291,11 @@ export class ExecutionsProcessor extends WorkerHost {
         },
       );
 
-      // Auto-close Alert Event if completely successful
-      if (activeEventId) {
-        await this.repository.resolveAlertEvent(
-          activeEventId,
-          AlertEventStatus.RESOLVED,
-        );
-      }
+      // NOTE: Alert events are intentionally NOT auto-resolved on execution success.
+      // Events represent an alert condition that requires human review and manual
+      // resolution. Auto-resolving would break: duplicate prevention (the OPEN event
+      // guards against re-triggering), snooze (the user needs time to act), and the
+      // manual resolve flow in the history view.
     } catch (globalError) {
       this.logger.error(`Execution failed catastrophically: ${globalError}`);
 

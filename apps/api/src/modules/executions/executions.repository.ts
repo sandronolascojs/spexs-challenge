@@ -15,7 +15,7 @@ import {
 } from '@spexs/db';
 import { AlertEventStatus, ExecutionStatus } from '@spexs/types';
 import type { NodeExecutionStatus, SortDirection } from '@spexs/types';
-import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, lt, sql } from 'drizzle-orm';
 import { topologicalSortNodes } from '../workflows/lib/topological-sort';
 
 @Injectable()
@@ -128,18 +128,19 @@ export class ExecutionsRepository {
         )
       : eq(executions.workflowId, workflowId);
 
-    const items = await this.database.db
-      .select()
-      .from(executions)
-      .where(whereClause)
-      .orderBy(desc(executions.startedAt))
-      .limit(query.pageSize)
-      .offset(offset);
-
-    const [totalResult] = await this.database.db
-      .select({ total: sql<number>`count(*)` })
-      .from(executions)
-      .where(whereClause);
+    const [items, [totalResult]] = await Promise.all([
+      this.database.db
+        .select()
+        .from(executions)
+        .where(whereClause)
+        .orderBy(desc(executions.startedAt))
+        .limit(query.pageSize)
+        .offset(offset),
+      this.database.db
+        .select({ total: sql<number>`count(*)` })
+        .from(executions)
+        .where(whereClause),
+    ]);
 
     const total = Number(totalResult?.total ?? 0);
 
@@ -167,21 +168,24 @@ export class ExecutionsRepository {
 
     if (!workflow) return null;
 
-    const nodes = await this.database.db
-      .select()
-      .from(workflowNodes)
-      .where(eq(workflowNodes.workflowId, workflowId));
-
-    const connections = await this.database.db
-      .select()
-      .from(workflowConnections)
-      .where(eq(workflowConnections.workflowId, workflowId));
+    const [nodes, connections] = await Promise.all([
+      this.database.db
+        .select()
+        .from(workflowNodes)
+        .where(eq(workflowNodes.workflowId, workflowId)),
+      this.database.db
+        .select()
+        .from(workflowConnections)
+        .where(eq(workflowConnections.workflowId, workflowId)),
+    ]);
 
     return { workflow, nodes, connections };
   }
 
   /**
-   * Idempotency check: find if there is an OPEN alert
+   * Idempotency check: find if there is an OPEN or SNOOZED alert event for
+   * this workflow. A SNOOZED event with snoozed_until > now still blocks
+   * new events from being created (no duplicates during snooze window).
    */
   async findOpenAlertEvent(workflowId: string) {
     const [event] = await this.database.db
@@ -190,7 +194,10 @@ export class ExecutionsRepository {
       .where(
         and(
           eq(alertEvents.workflowId, workflowId),
-          eq(alertEvents.status, AlertEventStatus.OPEN),
+          inArray(alertEvents.status, [
+            AlertEventStatus.OPEN,
+            AlertEventStatus.SNOOZED,
+          ]),
         ),
       )
       .limit(1);
@@ -357,11 +364,23 @@ export class ExecutionsRepository {
 
     if (!execution) return null;
 
-    const nodeExecs = await this.database.db
-      .select()
-      .from(nodeExecutions)
-      .where(eq(nodeExecutions.executionId, executionId))
-      .orderBy(nodeExecutions.createdAt);
+    // Parallelize the two independent queries: nodeExecutions and workflow graph
+    const [nodeExecs, workflowNodeRows, workflowConnectionRows] =
+      await Promise.all([
+        this.database.db
+          .select()
+          .from(nodeExecutions)
+          .where(eq(nodeExecutions.executionId, executionId))
+          .orderBy(nodeExecutions.createdAt),
+        this.database.db
+          .select()
+          .from(workflowNodes)
+          .where(eq(workflowNodes.workflowId, execution.workflowId)),
+        this.database.db
+          .select()
+          .from(workflowConnections)
+          .where(eq(workflowConnections.workflowId, execution.workflowId)),
+      ]);
 
     const nodeExecutionIds = nodeExecs.map((ne) => ne.id);
 
@@ -408,16 +427,6 @@ export class ExecutionsRepository {
       ...ne,
       comments: commentsByNodeExecutionId[ne.id] ?? [],
     }));
-
-    const workflowNodeRows = await this.database.db
-      .select()
-      .from(workflowNodes)
-      .where(eq(workflowNodes.workflowId, execution.workflowId));
-
-    const workflowConnectionRows = await this.database.db
-      .select()
-      .from(workflowConnections)
-      .where(eq(workflowConnections.workflowId, execution.workflowId));
 
     const allWorkflowNodes = topologicalSortNodes(
       workflowNodeRows,

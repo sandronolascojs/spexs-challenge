@@ -80,7 +80,7 @@ const TEMPLATE_SEEDS: Record<WorkflowTemplate, TemplateSeed> = {
         name: 'Anomaly Message',
         data: {
           template:
-            'Anomaly: {{trigger.metricName}} deviated by {{trigger.deviation}}% from baseline {{trigger.baseValue}}',
+            'Anomaly: {{trigger.metricName}} deviated by {{trigger.deviationPercentage}}% from baseline {{trigger.baseValue}}',
         },
         position: { x: 100, y: 380 },
       },
@@ -305,7 +305,7 @@ export class WorkflowsService {
   // ── Ownership checks ─────────────────────────────────────────────────────
 
   private async assertOwnership(workflowId: string, userId: string) {
-    const workflow = await this.repository.findById(workflowId);
+    const workflow = await this.repository.findOwnerById(workflowId);
 
     if (!workflow) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' });
