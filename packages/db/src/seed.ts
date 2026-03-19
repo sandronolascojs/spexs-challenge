@@ -9,16 +9,20 @@
  * Strategy:
  *  - Users are created via `auth.api.signUpEmail` so Better Auth handles
  *    password hashing and the accounts table atomically.
- *  - All domain data (workflows, events, comments, notifications) is inserted
- *    directly via Drizzle for full control over IDs, timestamps and state.
- *  - The script is idempotent: it clears all domain data on every run so
- *    re-running is safe. Auth rows (users/accounts/sessions) are only
- *    inserted if the email doesn't already exist.
+ *  - All domain data is inserted directly via Drizzle for full control over
+ *    IDs, timestamps and state.
+ *  - The script is idempotent: domain data is cleared on every run. Auth rows
+ *    (users/accounts/sessions) are reused if the email already exists.
  */
 
 import 'dotenv/config';
 import { createId } from '@paralleldrive/cuid2';
-import { AlertEventStatus, NodeType } from '@spexs/types';
+import {
+  AlertEventStatus,
+  ExecutionStatus,
+  NodeExecutionStatus,
+  NodeType,
+} from '@spexs/types';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { eq } from 'drizzle-orm';
@@ -28,6 +32,9 @@ import * as schema from './schema';
 import {
   alertEvents,
   eventComments,
+  executions,
+  nodeExecutionComments,
+  nodeExecutions,
   notifications,
   users,
   workflowConnections,
@@ -45,26 +52,13 @@ if (!databaseUrl) {
 const sql = postgres(databaseUrl);
 const db = drizzle(sql, { schema });
 
-/**
- * Minimal Better Auth instance used only to create users.
- * We omit rate-limiting, HaveIBeenPwned, and audit hooks — those are
- * runtime concerns that don't belong in a seed script.
- */
 const auth = betterAuth({
   database: drizzleAdapter(db, { provider: 'pg', usePlural: true }),
   emailAndPassword: { enabled: true },
-  // Better Auth uses nanoid by default — produces a text string compatible
-  // with our text PK. We do NOT set generateId:false because our users.id
-  // column has no SQL DEFAULT; the CUID2 defaultFn only runs through Drizzle.
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/**
- * Create a user via Better Auth's signUpEmail handler.
- * If the email already exists Better Auth throws — we catch and look up the
- * existing user id directly via Drizzle so the rest of the seed can continue.
- */
 async function resolveUserId(params: {
   name: string;
   email: string;
@@ -96,28 +90,64 @@ async function resolveUserId(params: {
   }
 }
 
+// ── Layout constants ──────────────────────────────────────────────────────────
+// Node card dimensions (approximate): 280px wide × 160px tall.
+// COL_GAP: 420px per column  (280 card + 140 breathing room).
+// ROW_GAP: 220px per fan-out row (160 card + 60 breathing room).
+
+const COL_GAP = 420;
+const ROW_GAP = 220;
+const START_X = 100;
+const CENTER_Y = 260;
+
+/** Single-row node at column n, vertically centered. */
+const COL = (n: number) => ({ x: START_X + n * COL_GAP, y: CENTER_Y });
+
+/**
+ * Fan-out node at column n, row r (0 = top branch, 1 = bottom branch).
+ * Rows are symmetric around CENTER_Y so the connector from the source
+ * node splits cleanly between the two targets.
+ */
+const ROW = (col: number, row: number) => ({
+  x: START_X + col * COL_GAP,
+  y: CENTER_Y - ROW_GAP / 2 + row * ROW_GAP,
+});
+
+// ── Timestamp helpers ─────────────────────────────────────────────────────────
+
+const MS_PER_DAY = 86_400_000;
+const MS_PER_HOUR = 3_600_000;
+const MS_PER_MINUTE = 60_000;
+
 function daysAgo(days: number): Date {
-  const MS_PER_DAY = 86_400_000;
   return new Date(Date.now() - days * MS_PER_DAY);
 }
 
 function hoursAgo(hours: number): Date {
-  const MS_PER_HOUR = 3_600_000;
   return new Date(Date.now() - hours * MS_PER_HOUR);
 }
 
+function minutesAgo(minutes: number): Date {
+  return new Date(Date.now() - minutes * MS_PER_MINUTE);
+}
+
 function minutesFromNow(minutes: number): Date {
-  const MS_PER_MINUTE = 60_000;
   return new Date(Date.now() + minutes * MS_PER_MINUTE);
+}
+
+function addSeconds(date: Date, seconds: number): Date {
+  return new Date(date.getTime() + seconds * 1000);
 }
 
 // ── Clear domain data ─────────────────────────────────────────────────────────
 
 async function clearDomainData(): Promise<void> {
-  // Delete in FK-safe order (children before parents)
+  await db.delete(nodeExecutionComments);
   await db.delete(notifications);
   await db.delete(eventComments);
   await db.delete(alertEvents);
+  await db.delete(nodeExecutions);
+  await db.delete(executions);
   await db.delete(workflowConnections);
   await db.delete(workflowNodes);
   await db.delete(workflows);
@@ -144,88 +174,91 @@ async function seed(): Promise<void> {
     password: 'Sp3xs!Bob#2026$Test',
   });
 
-  // ── 2. Clear domain data (idempotent) ─────────────────────────────────────
+  // ── 2. Clear domain data ──────────────────────────────────────────────────
   console.log('\nClearing domain data…');
   await clearDomainData();
 
   // ── 3. Workflows ──────────────────────────────────────────────────────────
   console.log('\nCreating workflows…');
 
-  // Workflow A — Threshold: CPU > 80%
   const wfThresholdId = createId();
-  await db.insert(workflows).values({
-    id: wfThresholdId,
-    name: 'CPU High Alert',
-    isActive: true,
-    createdBy: aliceId,
-  });
-
-  // Workflow B — Variance: Revenue deviation > 20%
   const wfVarianceId = createId();
-  await db.insert(workflows).values({
-    id: wfVarianceId,
-    name: 'Revenue Variance Alert',
-    isActive: true,
-    createdBy: aliceId,
-  });
-
-  // Workflow C — Inactive threshold (owned by Bob)
   const wfInactiveId = createId();
-  await db.insert(workflows).values({
-    id: wfInactiveId,
-    name: 'Disk Space Monitor (paused)',
-    isActive: false,
-    createdBy: bobId,
-  });
 
-  console.log(`  ✓ "CPU High Alert"              (${wfThresholdId})`);
-  console.log(`  ✓ "Revenue Variance Alert"      (${wfVarianceId})`);
-  console.log(`  ✓ "Disk Space Monitor (paused)" (${wfInactiveId})`);
+  await db.insert(workflows).values([
+    {
+      id: wfThresholdId,
+      name: 'CPU High Alert',
+      isActive: true,
+      createdBy: aliceId,
+    },
+    {
+      id: wfVarianceId,
+      name: 'Revenue Variance Alert',
+      isActive: true,
+      createdBy: aliceId,
+    },
+    {
+      id: wfInactiveId,
+      name: 'Disk Space Monitor',
+      isActive: false,
+      createdBy: bobId,
+    },
+  ]);
+
+  console.log(`  ✓ "CPU High Alert"          (${wfThresholdId})`);
+  console.log(`  ✓ "Revenue Variance Alert"  (${wfVarianceId})`);
+  console.log(`  ✓ "Disk Space Monitor"      (${wfInactiveId})`);
 
   // ── 4. Nodes ──────────────────────────────────────────────────────────────
   console.log('\nCreating nodes and connections…');
 
-  // — Workflow A nodes —
-  const triggerAId = createId();
-  const messageAId = createId();
-  const emailAId = createId();
-  const inAppAId = createId();
+  // ── Workflow A: CPU High Alert ────────────────────────────────────────────
+  // Layout: trigger → message → [email, in-app] (fan-out)
+  //
+  //  [Trigger]  →  [Message]  →  [Email]
+  //                           ↘  [In-App]
+
+  const wfA_triggerId = createId();
+  const wfA_messageId = createId();
+  const wfA_emailId = createId();
+  const wfA_inAppId = createId();
 
   await db.insert(workflowNodes).values([
     {
-      id: triggerAId,
+      id: wfA_triggerId,
       workflowId: wfThresholdId,
       type: NodeType.TRIGGER_THRESHOLD,
-      name: 'CPU Threshold Trigger',
+      name: 'CPU Threshold',
       data: { metricName: 'cpu_usage', operator: 'gt', threshold: 80 },
-      position: { x: 100, y: 150 },
+      position: COL(0),
     },
     {
-      id: messageAId,
+      id: wfA_messageId,
       workflowId: wfThresholdId,
       type: NodeType.OUTPUT_MESSAGE,
       name: 'Alert Message',
       data: {
         template:
-          'CPU usage is at {{cpu_usage}}%, which exceeds the threshold of 80%.',
+          'CPU usage is at {{trigger.value}}%, exceeding the threshold of {{trigger.threshold}}%.',
       },
-      position: { x: 400, y: 150 },
+      position: COL(1),
     },
     {
-      id: emailAId,
+      id: wfA_emailId,
       workflowId: wfThresholdId,
       type: NodeType.RECIPIENT_EMAIL,
       name: 'Email Ops Team',
-      data: { recipients: ['ops@example.com', 'alice@example.com'] },
-      position: { x: 700, y: 80 },
+      data: { emails: ['ops@example.com'] },
+      position: ROW(2, 0),
     },
     {
-      id: inAppAId,
+      id: wfA_inAppId,
       workflowId: wfThresholdId,
       type: NodeType.RECIPIENT_IN_APP,
       name: 'In-App Notification',
       data: {},
-      position: { x: 700, y: 240 },
+      position: ROW(2, 1),
     },
   ]);
 
@@ -233,55 +266,63 @@ async function seed(): Promise<void> {
     {
       id: createId(),
       workflowId: wfThresholdId,
-      fromNodeId: triggerAId,
-      toNodeId: messageAId,
+      fromNodeId: wfA_triggerId,
+      toNodeId: wfA_messageId,
     },
     {
       id: createId(),
       workflowId: wfThresholdId,
-      fromNodeId: messageAId,
-      toNodeId: emailAId,
+      fromNodeId: wfA_messageId,
+      toNodeId: wfA_emailId,
     },
     {
       id: createId(),
       workflowId: wfThresholdId,
-      fromNodeId: messageAId,
-      toNodeId: inAppAId,
+      fromNodeId: wfA_messageId,
+      toNodeId: wfA_inAppId,
     },
   ]);
 
-  // — Workflow B nodes —
-  const triggerBId = createId();
-  const messageBId = createId();
-  const emailBId = createId();
+  // ── Workflow B: Revenue Variance Alert ────────────────────────────────────
+  // Layout: trigger → message → email (linear)
+  //
+  //  [Trigger]  →  [Message]  →  [Email]
+
+  const wfB_triggerId = createId();
+  const wfB_messageId = createId();
+  const wfB_emailId = createId();
 
   await db.insert(workflowNodes).values([
     {
-      id: triggerBId,
+      id: wfB_triggerId,
       workflowId: wfVarianceId,
       type: NodeType.TRIGGER_VARIANCE,
-      name: 'Revenue Variance Trigger',
-      data: { baseValue: 10000, deviationPercent: 20 },
-      position: { x: 100, y: 150 },
+      name: 'Revenue Variance',
+      data: {
+        metricName: 'revenue',
+        baseValue: 10000,
+        deviationPercentage: 20,
+      },
+      position: COL(0),
     },
     {
-      id: messageBId,
+      id: wfB_messageId,
       workflowId: wfVarianceId,
       type: NodeType.OUTPUT_MESSAGE,
       name: 'Variance Message',
       data: {
         template:
-          'Revenue deviated by {{trigger.deviationPercentage}}% from the base of ${{trigger.baseValue}}. Current: ${{trigger.value}}.',
+          'Revenue deviated by {{trigger.deviationPercentage}}% from baseline ${{trigger.baseValue}}. Current: ${{trigger.value}}.',
       },
-      position: { x: 400, y: 150 },
+      position: COL(1),
     },
     {
-      id: emailBId,
+      id: wfB_emailId,
       workflowId: wfVarianceId,
       type: NodeType.RECIPIENT_EMAIL,
       name: 'Email Finance Team',
-      data: { recipients: ['finance@example.com'] },
-      position: { x: 700, y: 150 },
+      data: { emails: ['finance@example.com'] },
+      position: COL(2),
     },
   ]);
 
@@ -289,124 +330,553 @@ async function seed(): Promise<void> {
     {
       id: createId(),
       workflowId: wfVarianceId,
-      fromNodeId: triggerBId,
-      toNodeId: messageBId,
+      fromNodeId: wfB_triggerId,
+      toNodeId: wfB_messageId,
     },
     {
       id: createId(),
       workflowId: wfVarianceId,
-      fromNodeId: messageBId,
-      toNodeId: emailBId,
+      fromNodeId: wfB_messageId,
+      toNodeId: wfB_emailId,
     },
   ]);
 
-  // — Workflow C — single trigger node only —
+  // ── Workflow C: Disk Space Monitor (inactive, single trigger) ─────────────
+
   await db.insert(workflowNodes).values({
     id: createId(),
     workflowId: wfInactiveId,
     type: NodeType.TRIGGER_THRESHOLD,
     name: 'Disk Space Trigger',
     data: { metricName: 'disk_free_gb', operator: 'lt', threshold: 10 },
-    position: { x: 100, y: 150 },
+    position: COL(0),
   });
 
   console.log('  ✓ All nodes and connections created');
 
-  // ── 5. Alert Events ───────────────────────────────────────────────────────
-  console.log('\nCreating alert events…');
+  // ── 5. Executions + Node Executions + Alert Events ────────────────────────
+  console.log('\nCreating executions and alert events…');
 
-  // Event 1 — RESOLVED (2 days ago, resolved 1 day ago)
+  // ── Execution 1: CPU spike 2 days ago — RESOLVED ──────────────────────────
+  // All nodes succeeded. Event resolved next day with comment.
+
+  const exec1StartedAt = daysAgo(2);
+  const exec1Id = createId();
   const event1Id = createId();
+
+  await db.insert(executions).values({
+    id: exec1Id,
+    workflowId: wfThresholdId,
+    status: ExecutionStatus.SUCCESS,
+    triggeredBy: aliceId,
+    triggerData: { metricValue: 92 },
+    startedAt: exec1StartedAt,
+    completedAt: addSeconds(exec1StartedAt, 3),
+  });
+
+  const exec1_ne_trigger = createId();
+  const exec1_ne_message = createId();
+  const exec1_ne_email = createId();
+  const exec1_ne_inapp = createId();
+
+  await db.insert(nodeExecutions).values([
+    {
+      id: exec1_ne_trigger,
+      executionId: exec1Id,
+      nodeId: wfA_triggerId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: { metricValue: 92 },
+      outputData: {
+        trigger: {
+          metricName: 'cpu_usage',
+          value: 92,
+          threshold: 80,
+          triggered: true,
+        },
+      },
+      startedAt: exec1StartedAt,
+      completedAt: addSeconds(exec1StartedAt, 1),
+    },
+    {
+      id: exec1_ne_message,
+      executionId: exec1Id,
+      nodeId: wfA_messageId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: {
+        trigger: { metricName: 'cpu_usage', value: 92, threshold: 80 },
+      },
+      outputData: {
+        message: {
+          text: 'CPU usage is at 92%, exceeding the threshold of 80%.',
+        },
+      },
+      startedAt: addSeconds(exec1StartedAt, 1),
+      completedAt: addSeconds(exec1StartedAt, 1),
+    },
+    {
+      id: exec1_ne_email,
+      executionId: exec1Id,
+      nodeId: wfA_emailId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: {
+        message: {
+          text: 'CPU usage is at 92%, exceeding the threshold of 80%.',
+        },
+      },
+      outputData: { email: { sent: true, recipients: ['ops@example.com'] } },
+      startedAt: addSeconds(exec1StartedAt, 1),
+      completedAt: addSeconds(exec1StartedAt, 2),
+    },
+    {
+      id: exec1_ne_inapp,
+      executionId: exec1Id,
+      nodeId: wfA_inAppId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: {
+        message: {
+          text: 'CPU usage is at 92%, exceeding the threshold of 80%.',
+        },
+      },
+      outputData: { notification: { sent: true, channel: 'in_app' } },
+      startedAt: addSeconds(exec1StartedAt, 2),
+      completedAt: addSeconds(exec1StartedAt, 3),
+    },
+  ]);
+
   await db.insert(alertEvents).values({
     id: event1Id,
     workflowId: wfThresholdId,
+    executionId: exec1Id,
     status: AlertEventStatus.RESOLVED,
     triggerData: { metricValue: 92, evaluatedThreshold: 80 },
     stepLogs: [],
-    createdAt: daysAgo(2),
+    createdAt: exec1StartedAt,
     resolvedAt: daysAgo(1),
   });
 
-  // Event 2 — OPEN (3 hours ago)
+  // ── Execution 2: CPU spike 3 hours ago — OPEN (duplicate blocked) ─────────
+  // Trigger fired again while event 1 was still open — downstream nodes
+  // were skipped (idempotency). A second open event was created because
+  // event 1 was already resolved by the time this runs in a real session.
+  // Here we seed it as a fresh OPEN event for demo purposes.
+
+  const exec2StartedAt = hoursAgo(3);
+  const exec2Id = createId();
   const event2Id = createId();
+
+  await db.insert(executions).values({
+    id: exec2Id,
+    workflowId: wfThresholdId,
+    status: ExecutionStatus.SUCCESS,
+    triggeredBy: aliceId,
+    triggerData: { metricValue: 88 },
+    startedAt: exec2StartedAt,
+    completedAt: addSeconds(exec2StartedAt, 2),
+  });
+
+  await db.insert(nodeExecutions).values([
+    {
+      id: createId(),
+      executionId: exec2Id,
+      nodeId: wfA_triggerId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: { metricValue: 88 },
+      outputData: {
+        trigger: {
+          metricName: 'cpu_usage',
+          value: 88,
+          threshold: 80,
+          triggered: true,
+        },
+      },
+      startedAt: exec2StartedAt,
+      completedAt: addSeconds(exec2StartedAt, 1),
+    },
+    {
+      id: createId(),
+      executionId: exec2Id,
+      nodeId: wfA_messageId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: {
+        trigger: { metricName: 'cpu_usage', value: 88, threshold: 80 },
+      },
+      outputData: {
+        message: {
+          text: 'CPU usage is at 88%, exceeding the threshold of 80%.',
+        },
+      },
+      startedAt: addSeconds(exec2StartedAt, 1),
+      completedAt: addSeconds(exec2StartedAt, 1),
+    },
+    {
+      id: createId(),
+      executionId: exec2Id,
+      nodeId: wfA_emailId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: {
+        message: {
+          text: 'CPU usage is at 88%, exceeding the threshold of 80%.',
+        },
+      },
+      outputData: { email: { sent: true, recipients: ['ops@example.com'] } },
+      startedAt: addSeconds(exec2StartedAt, 1),
+      completedAt: addSeconds(exec2StartedAt, 2),
+    },
+    {
+      id: createId(),
+      executionId: exec2Id,
+      nodeId: wfA_inAppId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: {
+        message: {
+          text: 'CPU usage is at 88%, exceeding the threshold of 80%.',
+        },
+      },
+      outputData: { notification: { sent: true, channel: 'in_app' } },
+      startedAt: addSeconds(exec2StartedAt, 1),
+      completedAt: addSeconds(exec2StartedAt, 2),
+    },
+  ]);
+
   await db.insert(alertEvents).values({
     id: event2Id,
     workflowId: wfThresholdId,
+    executionId: exec2Id,
     status: AlertEventStatus.OPEN,
     triggerData: { metricValue: 88, evaluatedThreshold: 80 },
     stepLogs: [],
-    createdAt: hoursAgo(3),
+    createdAt: exec2StartedAt,
   });
 
-  // Event 3 — SNOOZED (1 hour ago, snoozed for 2 more hours)
+  // ── Execution 3: Revenue variance 1 hour ago — SNOOZED ───────────────────
+  // Email step failed (SMTP timeout). Event is open and snoozed for 2 hours.
+
+  const exec3StartedAt = hoursAgo(1);
+  const exec3Id = createId();
   const event3Id = createId();
+  const exec3_ne_email = createId();
+
+  await db.insert(executions).values({
+    id: exec3Id,
+    workflowId: wfVarianceId,
+    status: ExecutionStatus.FAILED,
+    triggeredBy: aliceId,
+    triggerData: { metricValue: 7500 },
+    error: 'RECIPIENT_EMAIL: SMTP connection timeout after 30s',
+    startedAt: exec3StartedAt,
+    completedAt: addSeconds(exec3StartedAt, 35),
+  });
+
+  await db.insert(nodeExecutions).values([
+    {
+      id: createId(),
+      executionId: exec3Id,
+      nodeId: wfB_triggerId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: { metricValue: 7500 },
+      outputData: {
+        trigger: {
+          metricName: 'revenue',
+          value: 7500,
+          baseValue: 10000,
+          deviationPercentage: 20,
+          actualDeviation: 2500,
+          triggered: true,
+        },
+      },
+      startedAt: exec3StartedAt,
+      completedAt: addSeconds(exec3StartedAt, 1),
+    },
+    {
+      id: createId(),
+      executionId: exec3Id,
+      nodeId: wfB_messageId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: {
+        trigger: { metricName: 'revenue', value: 7500, baseValue: 10000 },
+      },
+      outputData: {
+        message: {
+          text: 'Revenue deviated by 20% from baseline $10000. Current: $7500.',
+        },
+      },
+      startedAt: addSeconds(exec3StartedAt, 1),
+      completedAt: addSeconds(exec3StartedAt, 1),
+    },
+    {
+      id: exec3_ne_email,
+      executionId: exec3Id,
+      nodeId: wfB_emailId,
+      status: NodeExecutionStatus.FAILED,
+      inputData: {
+        message: {
+          text: 'Revenue deviated by 20% from baseline $10000. Current: $7500.',
+        },
+      },
+      error: 'SMTP connection timeout after 30s',
+      startedAt: addSeconds(exec3StartedAt, 2),
+      completedAt: addSeconds(exec3StartedAt, 35),
+    },
+  ]);
+
   await db.insert(alertEvents).values({
     id: event3Id,
     workflowId: wfVarianceId,
+    executionId: exec3Id,
     status: AlertEventStatus.SNOOZED,
     triggerData: { metricValue: 7500, evaluatedThreshold: 10000 },
     stepLogs: [],
-    createdAt: hoursAgo(1),
+    createdAt: exec3StartedAt,
     snoozedUntil: minutesFromNow(120),
   });
 
-  // Event 4 — RESOLVED with comments (5 days ago)
+  // ── Execution 4: Revenue variance 5 days ago — RESOLVED ──────────────────
+  // All steps succeeded. Event resolved next day with two comments.
+
+  const exec4StartedAt = daysAgo(5);
+  const exec4Id = createId();
   const event4Id = createId();
+
+  await db.insert(executions).values({
+    id: exec4Id,
+    workflowId: wfVarianceId,
+    status: ExecutionStatus.SUCCESS,
+    triggeredBy: aliceId,
+    triggerData: { metricValue: 6000 },
+    startedAt: exec4StartedAt,
+    completedAt: addSeconds(exec4StartedAt, 3),
+  });
+
+  await db.insert(nodeExecutions).values([
+    {
+      id: createId(),
+      executionId: exec4Id,
+      nodeId: wfB_triggerId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: { metricValue: 6000 },
+      outputData: {
+        trigger: {
+          metricName: 'revenue',
+          value: 6000,
+          baseValue: 10000,
+          deviationPercentage: 20,
+          actualDeviation: 4000,
+          triggered: true,
+        },
+      },
+      startedAt: exec4StartedAt,
+      completedAt: addSeconds(exec4StartedAt, 1),
+    },
+    {
+      id: createId(),
+      executionId: exec4Id,
+      nodeId: wfB_messageId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: {
+        trigger: { metricName: 'revenue', value: 6000, baseValue: 10000 },
+      },
+      outputData: {
+        message: {
+          text: 'Revenue deviated by 20% from baseline $10000. Current: $6000.',
+        },
+      },
+      startedAt: addSeconds(exec4StartedAt, 1),
+      completedAt: addSeconds(exec4StartedAt, 1),
+    },
+    {
+      id: createId(),
+      executionId: exec4Id,
+      nodeId: wfB_emailId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: {
+        message: {
+          text: 'Revenue deviated by 20% from baseline $10000. Current: $6000.',
+        },
+      },
+      outputData: {
+        email: { sent: true, recipients: ['finance@example.com'] },
+      },
+      startedAt: addSeconds(exec4StartedAt, 1),
+      completedAt: addSeconds(exec4StartedAt, 3),
+    },
+  ]);
+
   await db.insert(alertEvents).values({
     id: event4Id,
     workflowId: wfVarianceId,
+    executionId: exec4Id,
     status: AlertEventStatus.RESOLVED,
     triggerData: { metricValue: 6000, evaluatedThreshold: 10000 },
     stepLogs: [],
-    createdAt: daysAgo(5),
+    createdAt: exec4StartedAt,
     resolvedAt: daysAgo(4),
   });
 
-  // Event 5 — OPEN (30 min ago, threshold workflow — second concurrent open)
+  // ── Execution 5: CPU spike 30 min ago — OPEN ──────────────────────────────
+  // In-app step failed. Event is open awaiting resolution.
+
+  const exec5StartedAt = minutesAgo(30);
+  const exec5Id = createId();
   const event5Id = createId();
+  const exec5_ne_inapp = createId();
+
+  await db.insert(executions).values({
+    id: exec5Id,
+    workflowId: wfThresholdId,
+    status: ExecutionStatus.FAILED,
+    triggeredBy: aliceId,
+    triggerData: { metricValue: 95 },
+    error: 'RECIPIENT_IN_APP: Database write failed',
+    startedAt: exec5StartedAt,
+    completedAt: addSeconds(exec5StartedAt, 4),
+  });
+
+  await db.insert(nodeExecutions).values([
+    {
+      id: createId(),
+      executionId: exec5Id,
+      nodeId: wfA_triggerId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: { metricValue: 95 },
+      outputData: {
+        trigger: {
+          metricName: 'cpu_usage',
+          value: 95,
+          threshold: 80,
+          triggered: true,
+        },
+      },
+      startedAt: exec5StartedAt,
+      completedAt: addSeconds(exec5StartedAt, 1),
+    },
+    {
+      id: createId(),
+      executionId: exec5Id,
+      nodeId: wfA_messageId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: {
+        trigger: { metricName: 'cpu_usage', value: 95, threshold: 80 },
+      },
+      outputData: {
+        message: {
+          text: 'CPU usage is at 95%, exceeding the threshold of 80%.',
+        },
+      },
+      startedAt: addSeconds(exec5StartedAt, 1),
+      completedAt: addSeconds(exec5StartedAt, 1),
+    },
+    {
+      id: createId(),
+      executionId: exec5Id,
+      nodeId: wfA_emailId,
+      status: NodeExecutionStatus.SUCCESS,
+      inputData: {
+        message: {
+          text: 'CPU usage is at 95%, exceeding the threshold of 80%.',
+        },
+      },
+      outputData: { email: { sent: true, recipients: ['ops@example.com'] } },
+      startedAt: addSeconds(exec5StartedAt, 1),
+      completedAt: addSeconds(exec5StartedAt, 2),
+    },
+    {
+      id: exec5_ne_inapp,
+      executionId: exec5Id,
+      nodeId: wfA_inAppId,
+      status: NodeExecutionStatus.FAILED,
+      inputData: {
+        message: {
+          text: 'CPU usage is at 95%, exceeding the threshold of 80%.',
+        },
+      },
+      error: 'Database write failed: connection pool exhausted',
+      startedAt: addSeconds(exec5StartedAt, 2),
+      completedAt: addSeconds(exec5StartedAt, 4),
+    },
+  ]);
+
   await db.insert(alertEvents).values({
     id: event5Id,
     workflowId: wfThresholdId,
+    executionId: exec5Id,
     status: AlertEventStatus.OPEN,
     triggerData: { metricValue: 95, evaluatedThreshold: 80 },
     stepLogs: [],
-    createdAt: hoursAgo(0.5),
+    createdAt: exec5StartedAt,
   });
 
-  console.log('  ✓ 5 events: 2 open, 1 snoozed, 2 resolved');
+  console.log(
+    '  ✓ 5 executions and 5 alert events (2 open, 1 snoozed, 2 resolved)',
+  );
 
-  // ── 6. Event Comments ─────────────────────────────────────────────────────
-  console.log('\nCreating resolution comments…');
+  // ── 6. Step comments (node_execution_comments) ────────────────────────────
+  console.log('\nCreating step comments…');
+
+  await db.insert(nodeExecutionComments).values([
+    // Comment on the failed email step in exec 3 (variance, SMTP timeout)
+    {
+      id: createId(),
+      nodeExecutionId: exec3_ne_email,
+      userId: aliceId,
+      content:
+        'SMTP relay was down during our maintenance window. Will retry once the window closes.',
+      createdAt: addSeconds(exec3StartedAt, 40),
+    },
+    {
+      id: createId(),
+      nodeExecutionId: exec3_ne_email,
+      userId: bobId,
+      content:
+        'Confirmed — relay is back up. Safe to retry or snooze until tomorrow.',
+      createdAt: hoursAgo(0.5),
+    },
+    // Comment on the failed in-app step in exec 5 (CPU spike)
+    {
+      id: createId(),
+      nodeExecutionId: exec5_ne_inapp,
+      userId: aliceId,
+      content:
+        'Connection pool exhausted due to a spike in background jobs. Pool size increased to 50. Retry should succeed.',
+      createdAt: minutesAgo(20),
+    },
+  ]);
+
+  console.log('  ✓ 3 step comments added');
+
+  // ── 7. Event comments (resolution notes) ─────────────────────────────────
+  console.log('\nCreating event resolution comments…');
 
   await db.insert(eventComments).values([
+    // Resolved CPU spike (event 1)
     {
       id: createId(),
       eventId: event1Id,
       userId: aliceId,
       content:
-        'CPU spike caused by a batch job. Adjusted cron schedule to off-peak hours.',
+        'CPU spike was caused by the nightly analytics batch job. Rescheduled it to 03:00 UTC to avoid peak hours.',
       createdAt: daysAgo(1),
     },
+    // Resolved revenue variance (event 4) — two comments
     {
       id: createId(),
       eventId: event4Id,
       userId: aliceId,
       content:
-        'Revenue drop was due to a public holiday. Expected and within acceptable range.',
+        'Revenue drop on a public holiday — expected seasonal dip. No action required.',
       createdAt: daysAgo(4),
     },
     {
       id: createId(),
       eventId: event4Id,
       userId: bobId,
-      content: 'Confirmed with Finance team — no action required.',
-      createdAt: daysAgo(4),
+      content: 'Confirmed with Finance. They were already aware. Closing.',
+      createdAt: addSeconds(daysAgo(4), 600),
     },
   ]);
 
-  console.log('  ✓ 3 resolution comments added');
+  console.log('  ✓ 3 event resolution comments added');
 
-  // ── 7. In-App Notifications ───────────────────────────────────────────────
+  // ── 8. In-App Notifications ───────────────────────────────────────────────
   console.log('\nCreating notifications…');
 
   await db.insert(notifications).values([
@@ -416,7 +886,7 @@ async function seed(): Promise<void> {
       workflowId: wfThresholdId,
       eventId: event2Id,
       title: 'Alert triggered',
-      message: 'CPU usage is at 88%, which exceeds the threshold of 80%.',
+      message: 'CPU usage is at 88%, exceeding the threshold of 80%.',
       isRead: false,
       createdAt: hoursAgo(3),
     },
@@ -426,7 +896,8 @@ async function seed(): Promise<void> {
       workflowId: wfVarianceId,
       eventId: event3Id,
       title: 'Alert triggered',
-      message: 'Revenue deviated 25% from base of $10,000. Current: $7,500.',
+      message:
+        'Revenue deviated by 20% from baseline $10,000. Current: $7,500.',
       isRead: false,
       createdAt: hoursAgo(1),
     },
@@ -436,7 +907,7 @@ async function seed(): Promise<void> {
       workflowId: wfThresholdId,
       eventId: event1Id,
       title: 'Alert triggered',
-      message: 'CPU usage is at 92%, which exceeds the threshold of 80%.',
+      message: 'CPU usage is at 92%, exceeding the threshold of 80%.',
       isRead: true,
       createdAt: daysAgo(2),
     },
@@ -446,9 +917,9 @@ async function seed(): Promise<void> {
       workflowId: wfThresholdId,
       eventId: event5Id,
       title: 'Alert triggered',
-      message: 'CPU usage is at 95%, which exceeds the threshold of 80%.',
+      message: 'CPU usage is at 95%, exceeding the threshold of 80%.',
       isRead: false,
-      createdAt: hoursAgo(0.5),
+      createdAt: minutesAgo(30),
     },
   ]);
 

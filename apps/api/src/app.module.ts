@@ -28,6 +28,13 @@ import { TrpcModule } from './modules/trpc/trpc.module';
         connection: {
           host: env.get('REDIS_HOST'),
           port: env.get('REDIS_PORT'),
+          // Allow the queue to buffer commands while Redis is temporarily
+          // unavailable (e.g. during startup or a brief network hiccup).
+          // Without this, ioredis throws immediately if the connection is
+          // not yet established, crashing the NestJS bootstrap.
+          enableOfflineQueue: true,
+          lazyConnect: true,
+          maxRetriesPerRequest: null,
         },
       }),
     }),

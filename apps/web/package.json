@@ -43,6 +43,7 @@
     "zustand": "4.5.7"
   },
   "devDependencies": {
+    "@spexs/api": "workspace:*",
     "@tailwindcss/postcss": "^4",
     "@types/node": "catalog:",
     "@types/react": "catalog:",

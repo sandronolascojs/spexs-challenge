@@ -103,7 +103,7 @@ export function useAddStepComment(params: {
 
         // Snapshot for rollback on error
         const previousData = queryClient.getQueryData<
-          InfiniteData<StepCommentsPage>
+          InfiniteData<StepCommentsPage, string | null>
         >(infiniteFilter.queryKey);
 
         // Build the optimistic comment
@@ -118,7 +118,7 @@ export function useAddStepComment(params: {
         };
 
         // Prepend to the first page so it appears immediately at the top
-        queryClient.setQueryData<InfiniteData<StepCommentsPage>>(
+        queryClient.setQueryData<InfiniteData<StepCommentsPage, string | null>>(
           infiniteFilter.queryKey,
           (old) => {
             if (!old) return old;
@@ -158,20 +158,6 @@ export function useAddStepComment(params: {
           trpc.executions.getDetails.queryFilter({
             executionId: params.executionId,
           }),
-        );
-      },
-    }),
-  );
-}
-
-export function useAddEventComment(eventId: string) {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-  return useMutation(
-    trpc.events.addComment.mutationOptions({
-      onSuccess: () => {
-        void queryClient.invalidateQueries(
-          trpc.events.getComments.queryFilter({ eventId }),
         );
       },
     }),

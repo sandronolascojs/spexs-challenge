@@ -1,8 +1,26 @@
+# Version control
 .git
 .gitignore
+
+# Local env files — never baked into images; injected at runtime via docker-compose
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Dependencies — reinstalled inside the build
+node_modules
 **/node_modules
-**/.next
-**/dist
+
+# Build outputs — rebuilt inside the build
+apps/web/.next
+apps/api/dist
+packages/types/dist
+packages/db/dist
+
+# Test coverage
 **/coverage
-**/.env*
-**/README.md
+
+# Editor / OS
+.DS_Store
+*.log

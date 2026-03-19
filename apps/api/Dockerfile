@@ -1,19 +1,21 @@
+ARG NODE_VERSION=22-alpine
+
 # ---- base ----
-FROM node:22-alpine AS base
+FROM node:${NODE_VERSION} AS base
 RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
-# ---- fetch (lockfile-only cache layer) ----
+# ---- fetch ----
+# Lockfile-only layer — cached until pnpm-lock.yaml changes.
 FROM base AS fetch
 WORKDIR /app
-COPY pnpm-lock.yaml ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/types/package.json ./packages/types/package.json
+COPY packages/db/package.json ./packages/db/package.json
+COPY apps/api/package.json ./apps/api/package.json
 RUN pnpm fetch
 
 # ---- install ----
 FROM fetch AS install
-COPY pnpm-workspace.yaml package.json ./
-COPY packages/types/package.json ./packages/types/package.json
-COPY packages/db/package.json ./packages/db/package.json
-COPY apps/api/package.json ./apps/api/package.json
 RUN pnpm install --offline --frozen-lockfile
 
 # ---- build ----
@@ -21,9 +23,9 @@ FROM install AS builder
 COPY packages/types ./packages/types
 COPY packages/db ./packages/db
 COPY apps/api ./apps/api
-RUN pnpm --filter @spexs/types build
-RUN pnpm --filter @spexs/db build
-RUN pnpm --filter @spexs/api build
+COPY turbo.json ./turbo.json
+# turbo respects ^build — builds @spexs/types → @spexs/db → @spexs/api in order
+RUN pnpm exec turbo build --filter=@spexs/api
 
 # ---- runner ----
 FROM base AS runner

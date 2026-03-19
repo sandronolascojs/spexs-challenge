@@ -122,9 +122,11 @@ export const auth = betterAuth({
       sameSite: 'lax',
     },
     ipAddress: {
-      // Check standard proxy headers for real IP (needed for rate limiting)
       ipAddressHeaders: ['x-forwarded-for', 'x-real-ip'],
-      disableIpTracking: false,
+      // In development there is no reverse proxy so IP cannot be resolved —
+      // disable tracking to suppress the rate-limit warning.
+      // In production a real proxy will set x-forwarded-for correctly.
+      disableIpTracking: process.env.NODE_ENV !== 'production',
     },
   },
 
