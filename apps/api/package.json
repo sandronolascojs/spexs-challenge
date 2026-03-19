@@ -20,28 +20,43 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "catalog:",
     "@nestjs/config": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",
+    "@nestjs/schedule": "^6.1.1",
+    "@nestjs/throttler": "^6.5.0",
     "@spexs/db": "workspace:*",
     "@spexs/types": "workspace:*",
     "@thallesp/nestjs-better-auth": "^2.5.1",
     "@trpc/server": "catalog:",
     "better-auth": "catalog:",
+    "bullmq": "^5.71.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "compression": "^1.8.1",
+    "drizzle-orm": "catalog:",
+    "handlebars": "^4.7.8",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.10.0",
+    "mailtrap": "^4.5.1",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:",
     "superjson": "catalog:",
+    "toposort": "^2.0.2",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
+    "@types/compression": "^1.8.1",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "catalog:",
     "@types/supertest": "^6.0.2",
+    "@types/toposort": "^2.0.7",
     "jest": "^30.0.0",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
@@ -57,6 +72,9 @@
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "moduleNameMapper": {
+      "^@spexs/db$": "<rootDir>/__mocks__/@spexs/db.ts"
     },
     "collectCoverageFrom": ["**/*.(t|j)s"],
     "coverageDirectory": "../coverage",

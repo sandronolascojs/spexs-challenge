@@ -7,6 +7,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { THEME_STORAGE_KEY } from '@spexs/types';
+import { NuqsAdapter } from 'nuqs/adapters/next/app';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 const jetBrainsMono = JetBrains_Mono({
@@ -29,9 +30,9 @@ export default function RootLayout({
       lang="en"
       className={cn(
         'font-sans',
-        inter.variable,
         jetBrainsMono.variable,
         'antialiased',
+        inter.variable,
       )}
       suppressHydrationWarning
     >
@@ -44,7 +45,9 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <TooltipProvider>
-            <TRPCReactProvider>{children}</TRPCReactProvider>
+            <NuqsAdapter>
+              <TRPCReactProvider>{children}</TRPCReactProvider>
+            </NuqsAdapter>
           </TooltipProvider>
         </ThemeProvider>
         <Toaster />

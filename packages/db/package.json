@@ -17,7 +17,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/seed.ts"
   },
   "dependencies": {
     "@paralleldrive/cuid2": "^3.3.0",
@@ -32,8 +33,10 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "better-auth": "catalog:",
     "dotenv": "catalog:",
     "drizzle-kit": "catalog:",
+    "tsx": "^4.21.0",
     "typescript": "catalog:"
   }
 }

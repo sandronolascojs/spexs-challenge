@@ -1,10 +1,15 @@
 'use client';
 
-import { BellRing, GalleryVerticalEnd, GitBranch } from 'lucide-react';
+import {
+  BellRing,
+  GalleryVerticalEnd,
+  GitBranch,
+  LayoutDashboard,
+} from 'lucide-react';
 
 import { NavMain } from '@/components/nav-main';
-import { NavProjects } from '@/components/nav-projects';
 import { NavUser } from '@/components/nav-user';
+import { NavWorkflows } from '@/components/nav-workflows';
 import {
   Sidebar,
   SidebarContent,
@@ -12,8 +17,14 @@ import {
   SidebarHeader,
   SidebarRail,
 } from '@/components/ui/sidebar';
+import { AlertEventStatus } from '@spexs/types';
 
 const navMain = [
+  {
+    title: 'Dashboard',
+    url: '/',
+    icon: LayoutDashboard,
+  },
   {
     title: 'Workflows',
     url: '/workflows',
@@ -29,15 +40,10 @@ const navMain = [
     url: '/events',
     icon: BellRing,
     items: [
-      { title: 'Open', url: '/events?status=open' },
+      { title: 'Open', url: `/events?status=${AlertEventStatus.OPEN}` },
       { title: 'History', url: '/events' },
     ],
   },
-];
-
-const pinnedWorkflows = [
-  { name: 'CPU Threshold Alert', url: '/workflows/1', icon: GitBranch },
-  { name: 'Memory Variance Watch', url: '/workflows/2', icon: GitBranch },
 ];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -55,7 +61,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
-        <NavProjects projects={pinnedWorkflows} />
+        <NavWorkflows />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

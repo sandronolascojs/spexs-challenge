@@ -1,30 +1,55 @@
-import { type INestApplication, Injectable } from '@nestjs/common';
+import { type INestApplication, Injectable, Logger } from '@nestjs/common';
 import * as trpcExpress from '@trpc/server/adapters/express';
 import { z } from 'zod';
+import { buildDashboardRouter } from '../dashboard/dashboard.router';
+import { DashboardService } from '../dashboard/dashboard.service';
+import { buildEventsRouter } from '../events/events.router';
+import { EventsService } from '../events/events.service';
+import { buildExecutionsRouter } from '../executions/executions.router';
+import { ExecutionsService } from '../executions/executions.service';
+import { buildNotificationsRouter } from '../notifications/notifications.router';
+import { NotificationsService } from '../notifications/notifications.service';
+import { buildWorkflowsRouter } from '../workflows/workflows.router';
+import { WorkflowsService } from '../workflows/workflows.service';
 import { createTrpcContext } from './trpc.context';
-import type { TrpcService } from './trpc.service';
+import { TrpcService } from './trpc.service';
 
 @Injectable()
 export class TrpcRouter {
   appRouter: ReturnType<typeof this.buildRouter>;
+  private readonly logger = new Logger(TrpcRouter.name);
 
-  constructor(private readonly trpc: TrpcService) {
+  constructor(
+    private readonly trpc: TrpcService,
+    private readonly dashboardService: DashboardService,
+    private readonly workflowsService: WorkflowsService,
+    private readonly executionsService: ExecutionsService,
+    private readonly eventsService: EventsService,
+    private readonly notificationsService: NotificationsService,
+  ) {
     this.appRouter = this.buildRouter();
   }
 
   private buildRouter() {
     return this.trpc.router({
-      // Public example — no auth required
       hello: this.trpc.publicProcedure
         .input(z.object({ name: z.string().min(1).optional() }))
         .query(({ input }) => {
           return { message: `Hello, ${input?.name ?? 'World'}!` };
         }),
 
-      // Protected example — requires a valid session
       me: this.trpc.protectedProcedure.query(({ ctx }) => {
         return { user: ctx.session.user };
       }),
+
+      dashboard: buildDashboardRouter(this.trpc, this.dashboardService),
+      workflows: buildWorkflowsRouter(this.trpc, this.workflowsService),
+      executions: buildExecutionsRouter(this.trpc, this.executionsService),
+      events: buildEventsRouter(this.trpc, this.eventsService),
+      notifications: buildNotificationsRouter(
+        this.trpc,
+        this.notificationsService,
+      ),
     });
   }
 
@@ -34,6 +59,14 @@ export class TrpcRouter {
       trpcExpress.createExpressMiddleware({
         router: this.appRouter,
         createContext: createTrpcContext,
+        onError: ({ path, error }) => {
+          if (error.code === 'INTERNAL_SERVER_ERROR') {
+            this.logger.error(
+              `tRPC error on ${path}: ${error.message}`,
+              error.stack,
+            );
+          }
+        },
       }),
     );
   }

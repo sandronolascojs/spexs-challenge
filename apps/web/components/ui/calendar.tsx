@@ -10,6 +10,7 @@ import {
 
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
 import {
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -43,8 +44,7 @@ function Calendar({
       captionLayout={captionLayout}
       locale={locale}
       formatters={{
-        formatMonthDropdown: (date) =>
-          date.toLocaleString(locale?.code, { month: 'short' }),
+        formatMonthDropdown: (date) => format(date, 'MMM'),
         ...formatters,
       }}
       classNames={{
@@ -203,9 +203,10 @@ function CalendarDayButton({
 
   return (
     <Button
+      ref={ref}
       variant="ghost"
       size="icon"
-      data-day={day.date.toLocaleDateString(locale?.code)}
+      data-day={format(day.date, 'yyyy-MM-dd')}
       data-selected-single={
         modifiers.selected &&
         !modifiers.range_start &&

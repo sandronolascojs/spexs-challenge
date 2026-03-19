@@ -1,4 +1,5 @@
-export enum EventStatus {
-  OPEN = 'open',
-  RESOLVED = 'resolved',
+export enum AlertEventStatus {
+  OPEN = 'OPEN',
+  SNOOZED = 'SNOOZED',
+  RESOLVED = 'RESOLVED',
 }

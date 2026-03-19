@@ -13,7 +13,6 @@ import { validateEnv } from './env.validation';
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
-      // expandVariables allows ${VAR} substitution inside .env files
       expandVariables: true,
     }),
   ],

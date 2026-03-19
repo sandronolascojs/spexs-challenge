@@ -2,6 +2,10 @@ import { db } from '@spexs/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { haveIBeenPwned } from 'better-auth/plugins';
+import type {
+  Session as BetterAuthSession,
+  User as BetterAuthUser,
+} from 'better-auth/types';
 
 // ---------------------------------------------------------------------------
 // Session constants
@@ -9,6 +13,7 @@ import { haveIBeenPwned } from 'better-auth/plugins';
 
 const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 7; // 7 days
 const SESSION_UPDATE_AGE_SECONDS = 60 * 60 * 24; // refresh every 24 h
+const SESSION_FRESH_AGE_SECONDS = 60 * 60; // 1 h — re-auth required for sensitive ops
 const SESSION_COOKIE_CACHE_MAX_AGE_SECONDS = 60 * 5; // 5 min cookie cache
 
 // ---------------------------------------------------------------------------
@@ -22,6 +27,7 @@ const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 100;
 const SIGN_IN_RATE_LIMIT = { window: 60, max: 5 } as const;
 const SIGN_UP_RATE_LIMIT = { window: 60, max: 3 } as const;
 const CHANGE_PASSWORD_RATE_LIMIT = { window: 60, max: 3 } as const;
+const FORGOT_PASSWORD_RATE_LIMIT = { window: 60, max: 3 } as const;
 
 // ---------------------------------------------------------------------------
 // HaveIBeenPwned
@@ -29,6 +35,25 @@ const CHANGE_PASSWORD_RATE_LIMIT = { window: 60, max: 3 } as const;
 
 const PWNED_PASSWORD_MESSAGE =
   'This password was found in a known data breach. Please choose a different password.';
+
+// ---------------------------------------------------------------------------
+// Audit log helper
+// ---------------------------------------------------------------------------
+
+function auditLog(record: Record<string, unknown>): void {
+  // Replace with your structured logger / SIEM sink in production.
+  console.log(JSON.stringify(record));
+}
+
+function resolveRequestIp(
+  context: { request?: Request | null } | null,
+): string {
+  return (
+    context?.request?.headers.get('x-forwarded-for') ??
+    context?.request?.headers.get('x-real-ip') ??
+    'unknown'
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Auth instance
@@ -43,9 +68,12 @@ const PWNED_PASSWORD_MESSAGE =
  * Security features enabled:
  * - Rate limiting (database-backed, tight limits on sensitive endpoints)
  * - Session cookie cache (compact HMAC, 5 min TTL)
+ * - Session freshAge (1 h — forces re-auth for sensitive operations)
  * - Secure cookies in production
  * - IP tracking for rate limiting
  * - CSRF protection (default, never disabled)
+ * - HaveIBeenPwned password check on sign-up and password change
+ * - Database audit hooks for session creation/deletion and email changes
  */
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -66,12 +94,17 @@ export const auth = betterAuth({
       '/api/auth/sign-in/email': SIGN_IN_RATE_LIMIT,
       '/api/auth/sign-up/email': SIGN_UP_RATE_LIMIT,
       '/api/auth/change-password': CHANGE_PASSWORD_RATE_LIMIT,
+      '/api/auth/forget-password': FORGOT_PASSWORD_RATE_LIMIT,
     },
   },
 
   session: {
     expiresIn: SESSION_EXPIRES_IN_SECONDS,
     updateAge: SESSION_UPDATE_AGE_SECONDS,
+    // freshAge: requests to sensitive endpoints (change-password, change-email)
+    // require a session issued within this window. Prevents session-hijacking
+    // attacks where the attacker has a valid but old token.
+    freshAge: SESSION_FRESH_AGE_SECONDS,
     cookieCache: {
       enabled: true,
       maxAge: SESSION_COOKIE_CACHE_MAX_AGE_SECONDS,
@@ -89,11 +122,64 @@ export const auth = betterAuth({
       sameSite: 'lax',
     },
     ipAddress: {
-      // Check standard proxy headers for real IP (needed for rate limiting)
       ipAddressHeaders: ['x-forwarded-for', 'x-real-ip'],
-      disableIpTracking: false,
+      // In development there is no reverse proxy so IP cannot be resolved —
+      // disable tracking to suppress the rate-limit warning.
+      // In production a real proxy will set x-forwarded-for correctly.
+      disableIpTracking: process.env.NODE_ENV !== 'production',
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // Audit hooks
+  //
+  // These run inside Better Auth's own DB transaction and are the authoritative
+  // source for security-relevant events. In production, replace auditLog with
+  // your structured logger / SIEM sink.
+  // ---------------------------------------------------------------------------
+  databaseHooks: {
+    session: {
+      create: {
+        after: async (
+          session: BetterAuthSession & Record<string, unknown>,
+          context,
+        ) => {
+          auditLog({
+            event: 'session.created',
+            userId: session.userId,
+            sessionId: session.id,
+            ip: resolveRequestIp(context),
+            userAgent: context?.request?.headers.get('user-agent') ?? 'unknown',
+          });
+        },
+      },
+      delete: {
+        before: async (
+          session: BetterAuthSession & Record<string, unknown>,
+        ) => {
+          auditLog({
+            event: 'session.revoked',
+            sessionId: session.id,
+          });
+        },
+      },
+    },
+    user: {
+      update: {
+        after: async (
+          user: BetterAuthUser & Record<string, unknown>,
+          context,
+        ) => {
+          auditLog({
+            event: 'user.updated',
+            userId: user.id,
+            ip: resolveRequestIp(context),
+          });
+        },
+      },
+    },
+  },
+
   plugins: [
     haveIBeenPwned({
       customPasswordCompromisedMessage: PWNED_PASSWORD_MESSAGE,

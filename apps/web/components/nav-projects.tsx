@@ -41,14 +41,18 @@ export function NavProjects({ projects }: { projects: Project[] }) {
       <SidebarMenu>
         {projects.map((item) => (
           <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton render={<Link href={item.url} />}>
-              <item.icon />
-              <span>{item.name}</span>
+            <SidebarMenuButton asChild>
+              <Link href={item.url}>
+                <item.icon />
+                <span>{item.name}</span>
+              </Link>
             </SidebarMenuButton>
             <DropdownMenu>
-              <SidebarMenuAction showOnHover render={<DropdownMenuTrigger />}>
-                <MoreHorizontal />
-                <span className="sr-only">More</span>
+              <SidebarMenuAction showOnHover asChild>
+                <DropdownMenuTrigger>
+                  <MoreHorizontal />
+                  <span className="sr-only">More</span>
+                </DropdownMenuTrigger>
               </SidebarMenuAction>
               <DropdownMenuContent
                 className="w-48 rounded-lg"
@@ -73,12 +77,11 @@ export function NavProjects({ projects }: { projects: Project[] }) {
           </SidebarMenuItem>
         ))}
         <SidebarMenuItem>
-          <SidebarMenuButton
-            render={<Link href="/workflows" />}
-            className="text-sidebar-foreground/70"
-          >
-            <MoreHorizontal className="text-sidebar-foreground/70" />
-            <span>All Workflows</span>
+          <SidebarMenuButton asChild className="text-sidebar-foreground/70">
+            <Link href="/workflows">
+              <MoreHorizontal className="text-sidebar-foreground/70" />
+              <span>All Workflows</span>
+            </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

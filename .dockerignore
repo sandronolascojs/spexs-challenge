@@ -1,8 +1,24 @@
+# Version control
 .git
 .gitignore
+
+# Local env files — all env vars are declared in docker-compose.yml
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Dependencies — installed inside the container, not copied from host
+node_modules
 **/node_modules
-**/.next
-**/dist
-**/coverage
-**/.env*
-**/README.md
+
+# Build outputs
+apps/web/.next
+apps/api/dist
+packages/types/dist
+packages/db/dist
+
+# Editor / OS
+.DS_Store
+*.log
+.turbo

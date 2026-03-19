@@ -1,6 +1,33 @@
-export enum TriggerType {
+// ── Node-based workflow engine enums ──────────────────────────────────────────
+
+export enum NodeType {
+  MANUAL_TRIGGER = 'manual_trigger',
+  TRIGGER_THRESHOLD = 'trigger_threshold',
+  TRIGGER_VARIANCE = 'trigger_variance',
+  OUTPUT_MESSAGE = 'output_message',
+  RECIPIENT_EMAIL = 'recipient_email',
+  RECIPIENT_IN_APP = 'recipient_in_app',
+}
+
+export enum WorkflowTemplate {
   THRESHOLD = 'threshold',
   VARIANCE = 'variance',
+  SCRATCH = 'scratch',
+}
+
+export enum ExecutionStatus {
+  PENDING = 'pending',
+  RUNNING = 'running',
+  SUCCESS = 'success',
+  FAILED = 'failed',
+}
+
+export enum NodeExecutionStatus {
+  PENDING = 'pending',
+  RUNNING = 'running',
+  SUCCESS = 'success',
+  FAILED = 'failed',
+  SKIPPED = 'skipped',
 }
 
 export enum ComparisonOperator {
@@ -9,9 +36,4 @@ export enum ComparisonOperator {
   GREATER_THAN_OR_EQUAL = 'gte',
   LESS_THAN_OR_EQUAL = 'lte',
   EQUAL = 'eq',
-}
-
-export enum NotificationChannel {
-  IN_APP = 'in_app',
-  EMAIL = 'email',
 }

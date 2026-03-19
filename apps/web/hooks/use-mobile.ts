@@ -13,9 +13,12 @@ export function useIsMobile() {
       setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
     };
     mql.addEventListener('change', onChange);
+    // Set initial value after mount — never during SSR
     setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
     return () => mql.removeEventListener('change', onChange);
   }, []);
 
-  return !!isMobile;
+  // Return undefined until mounted so server and first client render agree.
+  // Callers that need a boolean should use `isMobile ?? false`.
+  return isMobile;
 }

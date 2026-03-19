@@ -1,39 +1,45 @@
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-} from '@/components/ui/breadcrumb';
-import { Separator } from '@/components/ui/separator';
-import { SidebarTrigger } from '@/components/ui/sidebar';
+import { DashboardTopNavbar } from '@/components/layout/dashboard-top-navbar';
+import { Skeleton } from '@/components/ui/skeleton';
+import { getQueryClient, trpc } from '@/lib/trpc/server';
+import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
+import { Suspense } from 'react';
+import { DashboardContent } from '../components/dashboard-content';
 
-export default function DashboardView() {
+const SKELETON_STAT_CARDS = [
+  'workflows',
+  'events',
+  'executions',
+  'success-rate',
+] as const;
+
+function DashboardContentSkeleton() {
+  return (
+    <div className="flex flex-col gap-6 p-6 pt-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {SKELETON_STAT_CARDS.map((key) => (
+          <Skeleton key={key} className="h-28 rounded-xl" />
+        ))}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-64 rounded-xl" />
+      </div>
+    </div>
+  );
+}
+
+export default async function DashboardView() {
+  const queryClient = getQueryClient();
+  void queryClient.prefetchQuery(trpc.dashboard.stats.queryOptions());
+
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-        <div className="flex items-center gap-2 px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator
-            orientation="vertical"
-            className="mr-2 data-[orientation=vertical]:h-4"
-          />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbPage>Dashboard</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </div>
-      </header>
-      <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-        <div className="grid auto-rows-min gap-4 md:grid-cols-3">
-          <div className="aspect-video rounded-xl bg-muted/50" />
-          <div className="aspect-video rounded-xl bg-muted/50" />
-          <div className="aspect-video rounded-xl bg-muted/50" />
-        </div>
-        <div className="min-h-[100vh] flex-1 rounded-xl bg-muted/50 md:min-h-min" />
-      </div>
+      <DashboardTopNavbar items={[{ id: 'dashboard', label: 'Dashboard' }]} />
+      <HydrationBoundary state={dehydrate(queryClient)}>
+        <Suspense fallback={<DashboardContentSkeleton />}>
+          <DashboardContent />
+        </Suspense>
+      </HydrationBoundary>
     </>
   );
 }
