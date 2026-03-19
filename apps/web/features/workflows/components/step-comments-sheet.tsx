@@ -96,7 +96,6 @@ export function StepCommentsSheet({
   const addCommentMutation = useAddStepComment({
     nodeExecutionId,
     executionId,
-    workflowId: '',
   });
 
   const onSubmit = ({ content }: CommentFormValues) => {
